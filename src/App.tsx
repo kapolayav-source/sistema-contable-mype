@@ -101,6 +101,7 @@ export default function App() {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
   const [loginMode, setLoginMode] = useState<'login' | 'registro'>('login');
+  const [loginType, setLoginType] = useState<'gerente' | 'colaborador'>('gerente');
   const [regRuc, setRegRuc] = useState<string>('');
   const [regRazonSocial, setRegRazonSocial] = useState<string>('');
   const [regNombreGerente, setRegNombreGerente] = useState<string>('');
@@ -624,16 +625,8 @@ export default function App() {
     const cleanUser = loginUser.trim();
     const cleanPass = loginPassword.trim();
 
-    if (cleanRuc.length !== 11) {
-      setLoginError('El RUC peruano debe tener exactamente 11 dígitos numéricos.');
-      return;
-    }
-    if (!['10', '15', '20'].includes(cleanRuc.substring(0, 2))) {
-      setLoginError('El RUC debe comenzar con 10 (Persona Natural con Negocio), 15 o 20 (Persona Jurídica).');
-      return;
-    }
     if (!cleanUser) {
-      setLoginError('Por favor ingrese el Usuario SOL.');
+      setLoginError('Por favor ingrese el Usuario.');
       return;
     }
     if (cleanPass.length < 4) {
@@ -641,16 +634,54 @@ export default function App() {
       return;
     }
 
-    // Validate against storage-backed registered users
-    const matchedUser = getRegisteredUsers().find(
-      u => u.ruc === cleanRuc &&
-           u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
-           u.contrasenaSol === cleanPass
-    );
+    let matchedUser;
+    let finalRuc = '';
 
-    if (!matchedUser) {
-      setLoginError('Credenciales Clave SOL inválidas. Por favor, verifique el RUC, Usuario y Contraseña, o regístrese como nueva empresa.');
-      return;
+    if (loginType === 'gerente') {
+      if (cleanRuc.length !== 11) {
+        setLoginError('El RUC peruano debe tener exactamente 11 dígitos numéricos.');
+        return;
+      }
+      if (!['10', '15', '20'].includes(cleanRuc.substring(0, 2))) {
+        setLoginError('El RUC debe comenzar con 10 (Persona Natural con Negocio), 15 o 20 (Persona Jurídica).');
+        return;
+      }
+
+      matchedUser = getRegisteredUsers().find(
+        u => u.ruc === cleanRuc &&
+             u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
+             u.contrasenaSol === cleanPass
+      );
+
+      if (!matchedUser) {
+        setLoginError('Credenciales Clave SOL de Gerente inválidas para este RUC. Verifica tus datos o regístrate.');
+        return;
+      }
+
+      if (matchedUser.role !== 'GERENTE') {
+        setLoginError('Este acceso con RUC requiere el rol GERENTE. Si eres Admin, Contador o Empleado, inicia sesión desde la pestaña Colaboradores.');
+        return;
+      }
+
+      finalRuc = cleanRuc;
+    } else {
+      // Colaborador login (No RUC required)
+      matchedUser = getRegisteredUsers().find(
+        u => u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
+             u.contrasenaSol === cleanPass
+      );
+
+      if (!matchedUser) {
+        setLoginError('Usuario o Contraseña incorrectos. Verifica tus credenciales o solicita el alta de tu usuario en Configuración.');
+        return;
+      }
+
+      if (matchedUser.role === 'GERENTE') {
+        setLoginError('El acceso para Gerentes requiere ingresar el RUC de la Empresa. Por favor, inicia sesión desde la pestaña Gerentes.');
+        return;
+      }
+
+      finalRuc = matchedUser.ruc;
     }
 
     const finalRole = matchedUser.role;
@@ -658,20 +689,20 @@ export default function App() {
     // Load company config for this RUC
     let userCompanyConfig = DEFAULT_COMPANY_CONFIG;
     try {
-      const stored = localStorage.getItem('mype_company_config_' + cleanRuc);
+      const stored = localStorage.getItem('mype_company_config_' + finalRuc);
       if (stored) {
         userCompanyConfig = JSON.parse(stored);
       } else {
         // If not found, create a customized default for this user
         userCompanyConfig = {
-          ruc: cleanRuc,
-          razonSocial: localStorage.getItem('mype_company_name_' + cleanRuc) || (cleanRuc === '20601234567' ? 'Empresa de Servicios Demo SAC' : `MYPE RUC ${cleanRuc} S.A.C.`),
+          ruc: finalRuc,
+          razonSocial: localStorage.getItem('mype_company_name_' + finalRuc) || (finalRuc === '20601234567' ? 'Empresa de Servicios Demo SAC' : `MYPE RUC ${finalRuc} S.A.C.`),
           direccion: 'Av. Las Flores 450, San Isidro, Lima, Perú',
           telefono: '(01) 456-7890',
           correo: 'contacto@empresamype.pe',
           representanteLegal: matchedUser.fullName.replace(' (Gerente General)', '')
         };
-        localStorage.setItem('mype_company_config_' + cleanRuc, JSON.stringify(userCompanyConfig));
+        localStorage.setItem('mype_company_config_' + finalRuc, JSON.stringify(userCompanyConfig));
       }
     } catch (e) {
       console.error('Error loading custom company config', e);
@@ -681,17 +712,17 @@ export default function App() {
 
     // Persist session
     localStorage.setItem('mype_logged_in', 'true');
-    localStorage.setItem('mype_user_ruc', cleanRuc);
+    localStorage.setItem('mype_user_ruc', finalRuc);
     localStorage.setItem('mype_sol_user', cleanUser);
     localStorage.setItem('mype_user_role', finalRole);
     localStorage.setItem('mype_user_fullname', matchedUser.fullName);
 
     setIsLoggedIn(true);
-    setRuc(cleanRuc);
+    setRuc(finalRuc);
     setSolUser(cleanUser);
     setCurrentUserRole(finalRole);
     setCurrentUserFullName(matchedUser.fullName);
-    setRucLastDigit(cleanRuc[cleanRuc.length - 1]);
+    setRucLastDigit(finalRuc[finalRuc.length - 1]);
     
     // Welcome chat notification or system message update
     setChatMessages(prev => [
@@ -699,7 +730,7 @@ export default function App() {
       {
         id: 'login_confirm_' + Date.now(),
         role: 'assistant',
-        content: `📈 **Sesión Iniciada como ${finalRole} por ${matchedUser.fullName}.**\n\nBienvenido, la empresa con RUC **${cleanRuc}** ya está conectada al Sistema de Libros Electrónicos y SIRE de SUNAT.\n\nHe adaptado el calendario tributario. Para tu dígito verificador **${cleanRuc[cleanRuc.length - 1]}**, tu fecha límite es el **${getSUNATDeadline(cleanRuc[cleanRuc.length - 1], period).date}**.\n\n*Nota de permisos:* Tienes el rol **${finalRole}**. ${finalRole === 'EMPLEADO' ? 'Solo los roles GERENTE o ADMINISTRADOR están autorizados para eliminar asientos o limpiar libros contables.' : 'Tienes permisos completos de modificación y eliminación de asientos diarios y configuración general.'}`,
+        content: `📈 **Sesión Iniciada como ${finalRole} por ${matchedUser.fullName}.**\n\nBienvenido, la empresa con RUC **${finalRuc}** ya está conectada al Sistema de Libros Electrónicos y SIRE de SUNAT.\n\nHe adaptado el calendario tributario. Para tu dígito verificador **${finalRuc[finalRuc.length - 1]}**, tu fecha límite es el **${getSUNATDeadline(finalRuc[finalRuc.length - 1], period).date}**.\n\n*Nota de permisos:* Tienes el rol **${finalRole}**. ${finalRole === 'EMPLEADO' ? 'Solo los roles GERENTE o ADMINISTRADOR están autorizados para eliminar asientos o limpiar libros contables.' : 'Tienes permisos completos de modificación y eliminación de asientos diarios y configuración general.'}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }
     ]);
@@ -1368,6 +1399,38 @@ export default function App() {
                       <p className="text-xs text-slate-500 mt-0.5">Ingresa tus credenciales autorizadas por el Gerente.</p>
                     </div>
 
+                    {/* Access Type Sub-tabs */}
+                    <div className="grid grid-cols-2 gap-1.5 mb-5 bg-indigo-50/50 p-1 rounded-xl border border-indigo-100/50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginType('gerente');
+                          setLoginError('');
+                        }}
+                        className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          loginType === 'gerente'
+                            ? 'bg-indigo-600 text-white shadow-xs font-black'
+                            : 'text-indigo-600 hover:bg-indigo-50/80 font-semibold'
+                        }`}
+                      >
+                        💼 Gerente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginType('colaborador');
+                          setLoginError('');
+                        }}
+                        className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                          loginType === 'colaborador'
+                            ? 'bg-indigo-600 text-white shadow-xs font-black'
+                            : 'text-indigo-600 hover:bg-indigo-50/80 font-semibold'
+                        }`}
+                      >
+                        👥 Colaborador
+                      </button>
+                    </div>
+
                     {loginError && (
                       <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-700 rounded-2xl text-xs flex gap-2 items-start">
                         <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -1376,28 +1439,30 @@ export default function App() {
                     )}
 
                     <form onSubmit={handleLogin} className="space-y-4">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC de la Empresa (11 dígitos)</label>
-                        <div className="relative">
-                          <input 
-                            type="text"
-                            placeholder="Ej. 20601234567"
-                            maxLength={11}
-                            value={loginRuc}
-                            onChange={(e) => setLoginRuc(e.target.value.replace(/\D/g, ''))}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
-                            required
-                          />
-                          <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                      {loginType === 'gerente' && (
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC de la Empresa (11 dígitos)</label>
+                          <div className="relative">
+                            <input 
+                              type="text"
+                              placeholder="Ej. 20601234567"
+                              maxLength={11}
+                              value={loginRuc}
+                              onChange={(e) => setLoginRuc(e.target.value.replace(/\D/g, ''))}
+                              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                              required
+                            />
+                            <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       <div>
                         <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Usuario</label>
                         <div className="relative">
                           <input 
                             type="text"
-                            placeholder="e.g. USER_CONTABLE"
+                            placeholder={loginType === 'gerente' ? 'e.g. GERENTE_MYPE' : 'e.g. ADMIN_MYPE'}
                             value={loginUser}
                             onChange={(e) => setLoginUser(e.target.value)}
                             className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"

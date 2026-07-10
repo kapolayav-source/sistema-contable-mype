@@ -1278,7 +1278,7 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <div className="bg-slate-50 min-h-screen flex flex-col font-sans text-slate-700 pb-12">
+      <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 pb-12 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-[#F8FAFC] text-slate-900'}`}>
         <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 pt-12 gap-8 flex flex-col">
           {/* Top minimal header */}
           <div className="flex items-center justify-between">
@@ -1287,12 +1287,27 @@ export default function App() {
                 🇵🇪
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight font-heading">Planificador MYPE Contable</h1>
-                <p className="text-xs text-slate-500 font-medium font-sans">Acceso Seguro Clave SOL / Sandbox Simulación</p>
+                <h1 className={`text-xl font-bold tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Planificador MYPE Contable</h1>
+                <p className={`text-xs font-medium font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Acceso Seguro Clave SOL / Sandbox Simulación</p>
               </div>
             </div>
-            <div className="text-[11px] font-bold text-slate-400 font-mono bg-white px-3 py-1 rounded-full border border-slate-200">
-              AÑO FISCAL 2026
+            <div className="flex items-center gap-3">
+              {/* Theme Toggle Button directly on login landing */}
+              <button 
+                type="button"
+                onClick={() => setDarkMode(prev => !prev)}
+                className={`p-2 rounded-xl border cursor-pointer transition-all ${
+                  darkMode ? 'bg-slate-900 border-slate-800 text-yellow-400 hover:bg-slate-800' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                }`}
+                title="Cambiar Tema"
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+              <div className={`text-[11px] font-bold font-mono px-3 py-1 rounded-full border ${
+                darkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-400'
+              }`}>
+                AÑO FISCAL 2026
+              </div>
             </div>
           </div>
 
@@ -1300,13 +1315,19 @@ export default function App() {
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
             
             {/* LEFT BOX: Legal Details & Features / Guide */}
-            <div className="md:col-span-7 bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm flex flex-col justify-between gap-6">
+            <div className={`md:col-span-7 rounded-3xl p-8 border shadow-sm flex flex-col justify-between gap-6 transition-colors duration-300 ${
+              darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
+            }`}>
               <div>
                 <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-2">Simulador Tributario Oficial para MYPEs</span>
-                <h2 className="text-3xl font-bold text-slate-950 tracking-tight font-heading leading-tight mb-4">
+                <h2 className={`text-3xl font-bold tracking-tight font-heading leading-tight mb-4 ${
+                  darkMode ? 'text-white' : 'text-slate-950'
+                }`}>
                   Controla la tributación de tu negocio en el <span className="text-emerald-600">Régimen MYPE</span>
                 </h2>
-                <p className="text-sm text-slate-600 leading-relaxed mb-6">
+                <p className={`text-sm leading-relaxed mb-6 ${
+                  darkMode ? 'text-slate-300' : 'text-slate-650 font-medium'
+                }`}>
                   Nuestra plataforma te permite planificar tu impuesto mensual, verificar cronogramas de vencimiento automatizados según tu número de RUC, generar asientos en doble partida compatibles con el PCGE y consultar a nuestro especialista con Inteligencia Artificial.
                 </p>
 
@@ -1316,8 +1337,8 @@ export default function App() {
                       📊
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">Liquidación en 1-Clic</h4>
-                      <p className="text-xs text-slate-500">Separamos la base imponible del IGV al 18% permitiendo el beneficio de IGV Justo de forma automatizada.</p>
+                      <h4 className={`text-sm font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>Liquidación en 1-Clic</h4>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Separamos la base imponible del IGV al 18% permitiendo el beneficio de IGV Justo de forma automatizada.</p>
                     </div>
                   </div>
 
@@ -1326,8 +1347,8 @@ export default function App() {
                       🔒
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">Simulación Segura</h4>
-                      <p className="text-xs text-slate-500">Tus credenciales y datos contables de demostración se guardan exclusivamente de manera local en tu navegador.</p>
+                      <h4 className={`text-sm font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>Simulación Segura</h4>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Tus credenciales y datos contables de demostración se guardan exclusivamente de manera local en tu navegador.</p>
                     </div>
                   </div>
 
@@ -1336,25 +1357,33 @@ export default function App() {
                       👥
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">Multiusuario y Roles</h4>
-                      <p className="text-xs text-slate-500">Crea perfiles con roles personalizados: Gerente, Administrador, Contador o Empleado con accesos restrictivos.</p>
+                      <h4 className={`text-sm font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>Multiusuario y Roles</h4>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Crea perfiles con roles personalizados: Gerente, Administrador, Contador o Empleado con accesos restrictivos.</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-mono">
+              <div className={`pt-6 border-t flex justify-between items-center text-[10px] font-mono ${
+                darkMode ? 'border-slate-800 text-slate-500' : 'border-slate-300 text-slate-550 font-bold'
+              }`}>
                 <span>RÉGIMEN MYPE TRIBUTARIO (RMT)</span>
                 <span>UIT 2026: S/. 5,500</span>
               </div>
             </div>
 
             {/* RIGHT BOX: Credential fields form / Registration toggle */}
-            <div className="md:col-span-5 bg-white rounded-3xl p-8 border-2 border-indigo-600/85 shadow-md flex flex-col justify-between">
+            <div className={`md:col-span-5 rounded-3xl p-8 border-2 shadow-md flex flex-col justify-between transition-colors duration-300 ${
+              darkMode 
+                ? 'bg-slate-900 border-indigo-500/80 shadow-indigo-950/20' 
+                : 'bg-white border-indigo-600/85 shadow-indigo-100/40'
+            }`}>
               <div className="w-full">
                 
                 {/* Mode Selector Tabs */}
-                <div className="grid grid-cols-2 gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
+                <div className={`grid grid-cols-2 gap-2 mb-6 p-1 rounded-2xl ${
+                  darkMode ? 'bg-slate-950' : 'bg-slate-100'
+                }`}>
                   <button
                     type="button"
                     onClick={() => {
@@ -1365,8 +1394,8 @@ export default function App() {
                     }}
                     className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                       loginMode === 'login'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? darkMode ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-900 shadow-sm'
+                        : darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
                     Iniciar Sesión
@@ -1381,8 +1410,8 @@ export default function App() {
                     }}
                     className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                       loginMode === 'registro'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? darkMode ? 'bg-slate-800 text-white shadow-xs' : 'bg-white text-slate-900 shadow-sm'
+                        : darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
                     Registrar Gerente
@@ -1392,15 +1421,19 @@ export default function App() {
                 {loginMode === 'login' ? (
                   <div>
                     <div className="mb-4">
-                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-black tracking-widest px-2.5 py-1 rounded-full border border-indigo-100 uppercase">
+                      <span className={`text-[10px] font-black tracking-widest px-2.5 py-1 rounded-full border uppercase ${
+                        darkMode ? 'bg-indigo-950/40 border-indigo-900/60 text-indigo-400' : 'bg-indigo-50 border-indigo-100 text-indigo-700'
+                      }`}>
                         ACCESO PRIVADO MYPE
                       </span>
-                      <h3 className="text-lg font-bold text-slate-900 mt-2 font-heading">Ingreso del Personal</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">Ingresa tus credenciales autorizadas por el Gerente.</p>
+                      <h3 className={`text-lg font-bold mt-2 font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Ingreso del Personal</h3>
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Ingresa tus credenciales autorizadas por el Gerente.</p>
                     </div>
 
                     {/* Access Type Sub-tabs */}
-                    <div className="grid grid-cols-2 gap-1.5 mb-5 bg-indigo-50/50 p-1 rounded-xl border border-indigo-100/50">
+                    <div className={`grid grid-cols-2 gap-1.5 mb-5 p-1 rounded-xl border ${
+                      darkMode ? 'bg-slate-950 border-slate-800' : 'bg-indigo-50/50 border-indigo-100/50'
+                    }`}>
                       <button
                         type="button"
                         onClick={() => {
@@ -1410,7 +1443,7 @@ export default function App() {
                         className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
                           loginType === 'gerente'
                             ? 'bg-indigo-600 text-white shadow-xs font-black'
-                            : 'text-indigo-600 hover:bg-indigo-50/80 font-semibold'
+                            : darkMode ? 'text-indigo-400 hover:bg-slate-800' : 'text-indigo-600 hover:bg-indigo-50/80 font-semibold'
                         }`}
                       >
                         💼 Gerente
@@ -1424,7 +1457,7 @@ export default function App() {
                         className={`py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
                           loginType === 'colaborador'
                             ? 'bg-indigo-600 text-white shadow-xs font-black'
-                            : 'text-indigo-600 hover:bg-indigo-50/80 font-semibold'
+                            : darkMode ? 'text-indigo-400 hover:bg-slate-800' : 'text-indigo-600 hover:bg-indigo-50/80 font-semibold'
                         }`}
                       >
                         👥 Colaborador
@@ -1441,7 +1474,7 @@ export default function App() {
                     <form onSubmit={handleLogin} className="space-y-4">
                       {loginType === 'gerente' && (
                         <div>
-                          <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC de la Empresa (11 dígitos)</label>
+                          <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>RUC de la Empresa (11 dígitos)</label>
                           <div className="relative">
                             <input 
                               type="text"
@@ -1449,7 +1482,11 @@ export default function App() {
                               maxLength={11}
                               value={loginRuc}
                               onChange={(e) => setLoginRuc(e.target.value.replace(/\D/g, ''))}
-                              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                              className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold focus:outline-none ${
+                                darkMode 
+                                  ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                  : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                              }`}
                               required
                             />
                             <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1458,14 +1495,18 @@ export default function App() {
                       )}
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Usuario</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Usuario</label>
                         <div className="relative">
                           <input 
                             type="text"
                             placeholder={loginType === 'gerente' ? 'e.g. GERENTE_MYPE' : 'e.g. ADMIN_MYPE'}
                             value={loginUser}
                             onChange={(e) => setLoginUser(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1473,14 +1514,18 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Contraseña</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Contraseña</label>
                         <div className="relative">
                           <input 
                             type={showPassword ? 'text' : 'password'}
                             placeholder="••••••••"
                             value={loginPassword}
                             onChange={(e) => setLoginPassword(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono text-slate-800 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-mono focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1496,25 +1541,29 @@ export default function App() {
 
                       <button 
                         type="submit"
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-250 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
                       >
                         <span>Conectar al Sistema</span>
                         <Unlock className="w-3.5 h-3.5" />
                       </button>
                     </form>
 
-                    <div className="mt-4 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] text-slate-500">
+                    <div className={`mt-4 p-3 border rounded-2xl text-[11px] ${
+                      darkMode ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-550 font-medium'
+                    }`}>
                       ℹ️ <strong>¿No tienes cuenta?</strong> Puedes registrar tu empresa y obtener un RUC con rol de <strong>Gerente</strong> haciendo clic en la pestaña superior.
                     </div>
                   </div>
                 ) : (
                   <div>
                     <div className="mb-4">
-                      <span className="text-[10px] bg-emerald-50 text-emerald-750 font-black tracking-widest px-2.5 py-1 rounded-full border border-emerald-100 uppercase">
+                      <span className={`text-[10px] font-black tracking-widest px-2.5 py-1 rounded-full border uppercase ${
+                        darkMode ? 'bg-emerald-950/40 border-emerald-900/60 text-emerald-400' : 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                      }`}>
                         NUEVO REGISTRO MYPE
                       </span>
-                      <h3 className="text-lg font-bold text-slate-900 mt-2 font-heading">Alta de Empresa</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">Inicializa tu base contable privada en el Régimen MYPE.</p>
+                      <h3 className={`text-lg font-bold mt-2 font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Alta de Empresa</h3>
+                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Inicializa tu base contable privada en el Régimen MYPE.</p>
                     </div>
 
                     {regError && (
@@ -1533,7 +1582,7 @@ export default function App() {
 
                     <form onSubmit={handleRegister} className="space-y-3.5">
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC de la Empresa (11 dígitos)</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>RUC de la Empresa (11 dígitos)</label>
                         <div className="relative">
                           <input 
                             type="text"
@@ -1541,7 +1590,11 @@ export default function App() {
                             maxLength={11}
                             value={regRuc}
                             onChange={(e) => setRegRuc(e.target.value.replace(/\D/g, ''))}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1549,14 +1602,18 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Razón Social</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Razón Social</label>
                         <div className="relative">
                           <input 
                             type="text"
                             placeholder="Ej. Mi Negocio Contable S.A.C."
                             value={regRazonSocial}
                             onChange={(e) => setRegRazonSocial(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs text-slate-800 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-bold focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1564,14 +1621,18 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Nombre del Gerente</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Nombre del Gerente</label>
                         <div className="relative">
                           <input 
                             type="text"
                             placeholder="Ej. Juan Pérez"
                             value={regNombreGerente}
                             onChange={(e) => setRegNombreGerente(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs text-slate-800 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-bold focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1579,14 +1640,18 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Usuario de Acceso</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Usuario de Acceso</label>
                         <div className="relative">
                           <input 
                             type="text"
                             placeholder="Ej. GERENTE_SOL"
                             value={regUsuarioSol}
                             onChange={(e) => setRegUsuarioSol(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1594,14 +1659,18 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Contraseña de Acceso</label>
+                        <label className={`text-[11px] font-bold uppercase block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Contraseña de Acceso</label>
                         <div className="relative">
                           <input 
                             type={showPassword ? 'text' : 'password'}
                             placeholder="Mínimo 4 caracteres"
                             value={regClaveSol}
                             onChange={(e) => setRegClaveSol(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono text-slate-850 focus:outline-none"
+                            className={`w-full border focus:ring-2 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold focus:outline-none ${
+                              darkMode 
+                                ? 'bg-slate-950 border-slate-800 focus:border-indigo-500 focus:ring-indigo-500/10 text-white' 
+                                : 'bg-slate-50 border-slate-300 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-900'
+                            }`}
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -1628,17 +1697,17 @@ export default function App() {
     );
   }
 
-  // Theme styling helpers based on darkMode
-  const cardBg = darkMode ? 'bg-slate-900 border-slate-800 text-white shadow-md' : 'bg-white border-slate-200/80 text-slate-700 shadow-xs';
-  const labelColor = darkMode ? 'text-slate-300' : 'text-slate-700';
-  const subtitleColor = darkMode ? 'text-slate-400' : 'text-slate-500';
-  const mainTitleColor = darkMode ? 'text-white' : 'text-slate-900';
-  const tabBg = darkMode ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-50 border-slate-100';
-  const inputBg = darkMode ? 'bg-slate-800 border-slate-750 text-white focus:border-blue-500 focus:ring-blue-500' : 'bg-white border-slate-250 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500';
-  const btnSec = darkMode ? 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-white' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700';
-  const tableHeaderBg = darkMode ? 'bg-slate-950 text-slate-300 border-slate-800' : 'bg-slate-50 text-slate-500 border-slate-200';
-  const tableBorder = darkMode ? 'border-slate-800' : 'border-slate-100';
-  const hoverRowBg = darkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/50';
+  // Theme styling helpers based on darkMode with optimized WCAG contrast
+  const cardBg = darkMode ? 'bg-slate-900 border-slate-800 text-white shadow-md' : 'bg-white border-slate-300 text-slate-900 shadow-sm';
+  const labelColor = darkMode ? 'text-slate-200' : 'text-slate-900 font-bold';
+  const subtitleColor = darkMode ? 'text-slate-400' : 'text-slate-650';
+  const mainTitleColor = darkMode ? 'text-white' : 'text-slate-950 font-black';
+  const tabBg = darkMode ? 'bg-slate-950/70 border-slate-800' : 'bg-slate-100/80 border-slate-300';
+  const inputBg = darkMode ? 'bg-slate-800 border-slate-700 text-white focus:border-blue-500 focus:ring-blue-500' : 'bg-white border-slate-400 text-slate-950 placeholder-slate-500 focus:border-indigo-600 focus:ring-indigo-600/10';
+  const btnSec = darkMode ? 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-white' : 'bg-white hover:bg-slate-100 border-slate-400 text-slate-900 font-bold';
+  const tableHeaderBg = darkMode ? 'bg-slate-950 text-slate-300 border-slate-800' : 'bg-slate-200 text-slate-900 border-slate-300 font-bold';
+  const tableBorder = darkMode ? 'border-slate-800' : 'border-slate-300';
+  const hoverRowBg = darkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-100/70';
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 pb-12 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-700'}`}>

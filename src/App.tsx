@@ -33,14 +33,13 @@ import {
 import { Transaction, AccountingEntry, PCGEAccount, ChatMessage, UserRole, CompanyConfig } from './types';
 import { PCGE_MYPE, INITIAL_TRANSACTIONS, generateSeatsFromTransaction, PRESET_QUESTIONS, MONTHS_LIST, getSUNATDeadline } from './data';
 import { exportToExcel, exportToPDF } from './exportHelper';
-import { SIMULATED_USERS } from './usuarios';
+import { getRegisteredUsers, registerUser, deleteUser, SimulatedUser } from './usuarios';
 import { ConfiguracionEmpresa, DEFAULT_COMPANY_CONFIG } from './components/ConfiguracionEmpresa';
 
 import imgOperaciones from './assets/images/navegacion_operaciones_1783371809409.jpg';
 import imgProductos from './assets/images/navegacion_productos_1783371823633.jpg';
 import imgLibros from './assets/images/navegacion_libros_1783371831901.jpg';
 import imgImpuestos from './assets/images/navegacion_impuestos_1783371840807.jpg';
-import imgAsistente from './assets/images/navegacion_asistente_1783371847542.jpg';
 
 const MOCK_CATALOG = [
   { id: '1', desc: 'Mercadería Comercial Lote A', precio: 1200, tipo: 'VENTA', isPhysical: true, sku: 'MER-001', unidad: 'Unidades', stockInicial: 50, costoInicial: 750 },
@@ -101,6 +100,14 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
+  const [loginMode, setLoginMode] = useState<'login' | 'registro'>('login');
+  const [regRuc, setRegRuc] = useState<string>('');
+  const [regRazonSocial, setRegRazonSocial] = useState<string>('');
+  const [regNombreGerente, setRegNombreGerente] = useState<string>('');
+  const [regUsuarioSol, setRegUsuarioSol] = useState<string>('');
+  const [regClaveSol, setRegClaveSol] = useState<string>('');
+  const [regSuccess, setRegSuccess] = useState<string>('');
+  const [regError, setRegError] = useState<string>('');
   const [solUser, setSolUser] = useState<string>(() => {
     try {
       return localStorage.getItem('mype_sol_user') || 'CONTADOR_MYPE';
@@ -134,11 +141,12 @@ export default function App() {
     }
   });
 
-  const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'asistente' | 'configuracion'>('transacciones');
+  const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'configuracion'>('transacciones');
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(() => {
     try {
-      const stored = localStorage.getItem('mype_company_config');
+      const activeRuc = localStorage.getItem('mype_user_ruc') || '20601234567';
+      const stored = localStorage.getItem('mype_company_config_' + activeRuc) || localStorage.getItem('mype_company_config');
       return stored ? JSON.parse(stored) : DEFAULT_COMPANY_CONFIG;
     } catch {
       return DEFAULT_COMPANY_CONFIG;
@@ -147,7 +155,10 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('mype_company_config', JSON.stringify(companyConfig));
+      if (companyConfig && companyConfig.ruc) {
+        localStorage.setItem('mype_company_config_' + companyConfig.ruc, JSON.stringify(companyConfig));
+        localStorage.setItem('mype_company_config', JSON.stringify(companyConfig));
+      }
     } catch {}
   }, [companyConfig]);
 
@@ -525,6 +536,86 @@ export default function App() {
   const deadlineInfo = getSUNATDeadline(rucLastDigit, period);
 
   // --- Handlers ---
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError('');
+    setRegSuccess('');
+
+    const cleanRuc = regRuc.trim().replace(/\D/g, '');
+    const cleanRazonSocial = regRazonSocial.trim();
+    const cleanNombreGerente = regNombreGerente.trim();
+    const cleanUser = regUsuarioSol.trim();
+    const cleanPass = regClaveSol.trim();
+
+    if (cleanRuc.length !== 11) {
+      setRegError('El RUC peruano debe tener exactamente 11 dígitos numéricos.');
+      return;
+    }
+    if (!['10', '15', '20'].includes(cleanRuc.substring(0, 2))) {
+      setRegError('El RUC debe comenzar con 10, 15 o 20.');
+      return;
+    }
+    if (!cleanRazonSocial) {
+      setRegError('Por favor, ingrese la Razón Social.');
+      return;
+    }
+    if (!cleanNombreGerente) {
+      setRegError('Por favor, ingrese el nombre del Gerente.');
+      return;
+    }
+    if (!cleanUser) {
+      setRegError('Por favor, ingrese el Usuario SOL.');
+      return;
+    }
+    if (cleanPass.length < 4) {
+      setRegError('La contraseña SOL debe tener al menos 4 caracteres.');
+      return;
+    }
+
+    const newUser: SimulatedUser = {
+      ruc: cleanRuc,
+      usuarioSol: cleanUser.toUpperCase(),
+      contrasenaSol: cleanPass,
+      role: 'GERENTE',
+      fullName: `${cleanNombreGerente} (Gerente General)`
+    };
+
+    const registered = registerUser(newUser);
+    if (!registered) {
+      setRegError('Este Usuario SOL ya se encuentra registrado para este RUC.');
+      return;
+    }
+
+    // Save company config specifically for this RUC
+    const newConfig: CompanyConfig = {
+      ruc: cleanRuc,
+      razonSocial: cleanRazonSocial,
+      direccion: 'Av. Principal de la Empresa, Perú',
+      telefono: '999888777',
+      correo: 'contacto@' + cleanRazonSocial.toLowerCase().replace(/[^a-z0-9]/g, '') + '.pe',
+      representanteLegal: cleanNombreGerente
+    };
+    localStorage.setItem('mype_company_config_' + cleanRuc, JSON.stringify(newConfig));
+    localStorage.setItem('mype_company_name_' + cleanRuc, cleanRazonSocial);
+
+    setRegSuccess('¡Empresa y Gerente registrados correctamente! Ya puedes iniciar sesión.');
+    
+    // Clear registration fields
+    setRegRuc('');
+    setRegRazonSocial('');
+    setRegNombreGerente('');
+    setRegUsuarioSol('');
+    setRegClaveSol('');
+
+    // Wait a bit and switch to login mode
+    setTimeout(() => {
+      setLoginRuc(cleanRuc);
+      setLoginUser(cleanUser.toUpperCase());
+      setLoginMode('login');
+      setRegSuccess('');
+    }, 2500);
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -550,19 +641,43 @@ export default function App() {
       return;
     }
 
-    // Validate against SIMULATED_USERS
-    const matchedUser = SIMULATED_USERS.find(
+    // Validate against storage-backed registered users
+    const matchedUser = getRegisteredUsers().find(
       u => u.ruc === cleanRuc &&
            u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
            u.contrasenaSol === cleanPass
     );
 
     if (!matchedUser) {
-      setLoginError('Credenciales Clave SOL inválidas. El RUC, Usuario SOL o Contraseña no coinciden con la base de datos de producción real simulada.');
+      setLoginError('Credenciales Clave SOL inválidas. Por favor, verifique el RUC, Usuario y Contraseña, o regístrese como nueva empresa.');
       return;
     }
 
     const finalRole = matchedUser.role;
+
+    // Load company config for this RUC
+    let userCompanyConfig = DEFAULT_COMPANY_CONFIG;
+    try {
+      const stored = localStorage.getItem('mype_company_config_' + cleanRuc);
+      if (stored) {
+        userCompanyConfig = JSON.parse(stored);
+      } else {
+        // If not found, create a customized default for this user
+        userCompanyConfig = {
+          ruc: cleanRuc,
+          razonSocial: localStorage.getItem('mype_company_name_' + cleanRuc) || (cleanRuc === '20601234567' ? 'Empresa de Servicios Demo SAC' : `MYPE RUC ${cleanRuc} S.A.C.`),
+          direccion: 'Av. Las Flores 450, San Isidro, Lima, Perú',
+          telefono: '(01) 456-7890',
+          correo: 'contacto@empresamype.pe',
+          representanteLegal: matchedUser.fullName.replace(' (Gerente General)', '')
+        };
+        localStorage.setItem('mype_company_config_' + cleanRuc, JSON.stringify(userCompanyConfig));
+      }
+    } catch (e) {
+      console.error('Error loading custom company config', e);
+    }
+
+    setCompanyConfig(userCompanyConfig);
 
     // Persist session
     localStorage.setItem('mype_logged_in', 'true');
@@ -606,22 +721,6 @@ export default function App() {
       setLoginRuc('');
       setLoginUser('');
       setLoginPassword('');
-    }
-  };
-
-  const handleLoginDemo = (demoRuc: string, demoUser: string, demoRole: UserRole) => {
-    // Find matching user from SIMULATED_USERS
-    const matched = SIMULATED_USERS.find(u => u.role === demoRole && u.ruc === demoRuc);
-    if (matched) {
-      setLoginRuc(matched.ruc);
-      setLoginUser(matched.usuarioSol);
-      setLoginPassword(matched.contrasenaSol);
-      setLoginRole(matched.role);
-    } else {
-      setLoginRuc(demoRuc);
-      setLoginUser(demoUser);
-      setLoginPassword('ClaveSolDemo2026');
-      setLoginRole(demoRole);
     }
   };
 
@@ -1203,11 +1302,11 @@ export default function App() {
 
                   <div className="flex gap-3 items-start">
                     <div className="bg-amber-50 text-amber-700 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-sm">
-                      💬
+                      👥
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">Asesor de Impuestos con IA</h4>
-                      <p className="text-xs text-slate-500">Consultas sobre qué costos deducir amparados por el principio de causalidad en el Perú.</p>
+                      <h4 className="text-sm font-bold text-slate-900">Multiusuario y Roles</h4>
+                      <p className="text-xs text-slate-500">Crea perfiles con roles personalizados: Gerente, Administrador, Contador o Empleado con accesos restrictivos.</p>
                     </div>
                   </div>
                 </div>
@@ -1219,232 +1318,242 @@ export default function App() {
               </div>
             </div>
 
-            {/* RIGHT BOX: Credential fields form */}
+            {/* RIGHT BOX: Credential fields form / Registration toggle */}
             <div className="md:col-span-5 bg-white rounded-3xl p-8 border-2 border-indigo-600/85 shadow-md flex flex-col justify-between">
               <div className="w-full">
-                <div className="mb-6">
-                  <span className="text-[10px] bg-indigo-50 text-indigo-700 font-black tracking-widest px-2.5 py-1 rounded-full border border-indigo-100 uppercase">
-                    SUNAT CLAVE SOL
-                  </span>
-                  <h3 className="text-xl font-bold text-slate-900 mt-3 font-heading">Iniciar Sesión</h3>
-                  <p className="text-xs text-slate-500 mt-1">Ingresa tus datos de empresa o usa un demo rápido abajo.</p>
+                
+                {/* Mode Selector Tabs */}
+                <div className="grid grid-cols-2 gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginMode('login');
+                      setLoginError('');
+                      setRegError('');
+                      setRegSuccess('');
+                    }}
+                    className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                      loginMode === 'login'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Iniciar Sesión
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginMode('registro');
+                      setLoginError('');
+                      setRegError('');
+                      setRegSuccess('');
+                    }}
+                    className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                      loginMode === 'registro'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Registrar Gerente
+                  </button>
                 </div>
 
-                {loginError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-700 rounded-2xl text-xs flex gap-2 items-start">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <div>{loginError}</div>
+                {loginMode === 'login' ? (
+                  <div>
+                    <div className="mb-4">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 font-black tracking-widest px-2.5 py-1 rounded-full border border-indigo-100 uppercase">
+                        ACCESO PRIVADO MYPE
+                      </span>
+                      <h3 className="text-lg font-bold text-slate-900 mt-2 font-heading">Ingreso del Personal</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Ingresa tus credenciales autorizadas por el Gerente.</p>
+                    </div>
+
+                    {loginError && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-700 rounded-2xl text-xs flex gap-2 items-start">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div>{loginError}</div>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleLogin} className="space-y-4">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC de la Empresa (11 dígitos)</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="Ej. 20601234567"
+                            maxLength={11}
+                            value={loginRuc}
+                            onChange={(e) => setLoginRuc(e.target.value.replace(/\D/g, ''))}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Usuario</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="e.g. USER_CONTABLE"
+                            value={loginUser}
+                            onChange={(e) => setLoginUser(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Contraseña</label>
+                        <div className="relative">
+                          <input 
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="••••••••"
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                          <button 
+                            type="button" 
+                            onClick={() => setShowPassword(!showPassword)} 
+                            className="text-[10px] text-indigo-600 font-bold hover:underline absolute right-3 top-2.5 focus:outline-none"
+                          >
+                            {showPassword ? 'Ocultar' : 'Ver'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button 
+                        type="submit"
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                      >
+                        <span>Conectar al Sistema</span>
+                        <Unlock className="w-3.5 h-3.5" />
+                      </button>
+                    </form>
+
+                    <div className="mt-4 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] text-slate-500">
+                      ℹ️ <strong>¿No tienes cuenta?</strong> Puedes registrar tu empresa y obtener un RUC con rol de <strong>Gerente</strong> haciendo clic en la pestaña superior.
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-4">
+                      <span className="text-[10px] bg-emerald-50 text-emerald-750 font-black tracking-widest px-2.5 py-1 rounded-full border border-emerald-100 uppercase">
+                        NUEVO REGISTRO MYPE
+                      </span>
+                      <h3 className="text-lg font-bold text-slate-900 mt-2 font-heading">Alta de Empresa</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Inicializa tu base contable privada en el Régimen MYPE.</p>
+                    </div>
+
+                    {regError && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-700 rounded-2xl text-xs flex gap-2 items-start animate-fadeIn">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div>{regError}</div>
+                      </div>
+                    )}
+
+                    {regSuccess && (
+                      <div className="mb-4 p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-2xl text-xs flex gap-2 items-start animate-fadeIn">
+                        <span className="text-base">✅</span>
+                        <div>{regSuccess}</div>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleRegister} className="space-y-3.5">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC de la Empresa (11 dígitos)</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="Ej. 20601122334"
+                            maxLength={11}
+                            value={regRuc}
+                            onChange={(e) => setRegRuc(e.target.value.replace(/\D/g, ''))}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Razón Social</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="Ej. Mi Negocio Contable S.A.C."
+                            value={regRazonSocial}
+                            onChange={(e) => setRegRazonSocial(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Nombre del Gerente</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="Ej. Juan Pérez"
+                            value={regNombreGerente}
+                            onChange={(e) => setRegNombreGerente(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Usuario de Acceso</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="Ej. GERENTE_SOL"
+                            value={regUsuarioSol}
+                            onChange={(e) => setRegUsuarioSol(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
+                            required
+                          />
+                          <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Contraseña de Acceso</label>
+                        <div className="relative">
+                          <input 
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Mínimo 4 caracteres"
+                            value={regClaveSol}
+                            onChange={(e) => setRegClaveSol(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono text-slate-850 focus:outline-none"
+                            required
+                          />
+                          <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        </div>
+                      </div>
+
+                      <button 
+                        type="submit"
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-emerald-250 transition-all flex items-center justify-center gap-2 cursor-pointer mt-3"
+                      >
+                        <span>Registrar e Inicializar MYPE</span>
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </form>
                   </div>
                 )}
 
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">RUC (11 dígitos)</label>
-                    <div className="relative">
-                      <input 
-                        type="text"
-                        placeholder="Ej. 20601234567"
-                        maxLength={11}
-                        value={loginRuc}
-                        onChange={(e) => setLoginRuc(e.target.value.replace(/\D/g, ''))}
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
-                        required
-                      />
-                      <Building className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Usuario SOL</label>
-                    <div className="relative">
-                      <input 
-                        type="text"
-                        placeholder="e.g. USER_CONTABLE"
-                        value={loginUser}
-                        onChange={(e) => setLoginUser(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono font-bold text-slate-800 focus:outline-none"
-                        required
-                      />
-                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Contraseña SOL</label>
-                    <div className="relative">
-                      <input 
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl py-2 px-3 pl-9 text-xs font-mono text-slate-800 focus:outline-none"
-                        required
-                      />
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <button 
-                        type="button" 
-                        onClick={() => setShowPassword(!showPassword)} 
-                        className="text-[10px] text-indigo-600 font-bold hover:underline absolute right-3 top-2.5 focus:outline-none"
-                      >
-                        {showPassword ? 'Ocultar' : 'Ver'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1.5 flex justify-between">
-                      <span>Rango Jerárquico (Rol)</span>
-                      <span className="text-[9px] text-indigo-600 font-mono font-bold">Jerarquía MYPE</span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLoginRole('EMPLEADO');
-                          const matched = SIMULATED_USERS.find(u => u.role === 'EMPLEADO');
-                          if (matched) {
-                            setLoginRuc(matched.ruc);
-                            setLoginUser(matched.usuarioSol);
-                            setLoginPassword(matched.contrasenaSol);
-                          }
-                        }}
-                        className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
-                          loginRole === 'EMPLEADO'
-                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        <span className="block text-[11px] font-bold">💼 Empleado</span>
-                        <span className="text-[9px] text-slate-400 font-normal block mt-0.5">Solo Registrar</span>
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLoginRole('GERENTE');
-                          const matched = SIMULATED_USERS.find(u => u.role === 'GERENTE');
-                          if (matched) {
-                            setLoginRuc(matched.ruc);
-                            setLoginUser(matched.usuarioSol);
-                            setLoginPassword(matched.contrasenaSol);
-                          }
-                        }}
-                        className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
-                          loginRole === 'GERENTE'
-                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        <span className="block text-[11px] font-bold">👔 Gerente</span>
-                        <span className="text-[9px] text-slate-400 font-normal block mt-0.5">Eliminar / Control</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLoginRole('ADMINISTRADOR');
-                          const matched = SIMULATED_USERS.find(u => u.role === 'ADMINISTRADOR');
-                          if (matched) {
-                            setLoginRuc(matched.ruc);
-                            setLoginUser(matched.usuarioSol);
-                            setLoginPassword(matched.contrasenaSol);
-                          }
-                        }}
-                        className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
-                          loginRole === 'ADMINISTRADOR'
-                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        <span className="block text-[11px] font-bold">🔧 Admin</span>
-                        <span className="text-[9px] text-slate-400 font-normal block mt-0.5">Eliminar / Control</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLoginRole('CONTADOR');
-                          const matched = SIMULATED_USERS.find(u => u.role === 'CONTADOR');
-                          if (matched) {
-                            setLoginRuc(matched.ruc);
-                            setLoginUser(matched.usuarioSol);
-                            setLoginPassword(matched.contrasenaSol);
-                          }
-                        }}
-                        className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
-                          loginRole === 'CONTADOR'
-                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        <span className="block text-[11px] font-bold">🧮 Contador</span>
-                        <span className="text-[9px] text-slate-400 font-normal block mt-0.5">Eliminar / Libros</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <button 
-                    type="submit"
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-                  >
-                    <span>Conectar con SUNAT Portal</span>
-                    <Unlock className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-
-                {/* DEMO ACCESO RAPIDO */}
-                <div className="mt-5 pt-4 border-t border-slate-100">
-                  <span className="text-[10.5px] font-bold text-slate-400 block mb-2 uppercase tracking-wider">Acceso de Demostración Rápido:</span>
-                  <div className="grid grid-cols-1 gap-1.5">
-                    <button 
-                      type="button"
-                      onClick={() => handleLoginDemo('20601234567', 'EMPLEADO_MYPE', 'EMPLEADO')}
-                      className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
-                    >
-                      <div>
-                        <span className="font-bold text-slate-800 font-sans block text-[11px]">Empresa Demo SAC — <span className="text-amber-600 font-semibold">Rol Empleado</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Usuario: EMPLEADO_MYPE</span>
-                      </div>
-                      <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
-                    </button>
-
-                    <button 
-                      type="button"
-                      onClick={() => handleLoginDemo('20601234567', 'ADMIN_MYPE', 'ADMINISTRADOR')}
-                      className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
-                    >
-                      <div>
-                        <span className="font-bold text-slate-800 font-sans block text-[11px]">Empresa Demo SAC — <span className="text-sky-600 font-semibold">Rol Admin</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Usuario: ADMIN_MYPE</span>
-                      </div>
-                      <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
-                    </button>
-
-                    <button 
-                      type="button"
-                      onClick={() => handleLoginDemo('20601234567', 'GERENTE_MYPE', 'GERENTE')}
-                      className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
-                    >
-                      <div>
-                        <span className="font-bold text-slate-800 font-sans block text-[11px]">Empresa Demo SAC — <span className="text-indigo-600 font-semibold">Rol Gerente</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Usuario: GERENTE_MYPE</span>
-                      </div>
-                      <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
-                    </button>
-
-                    <button 
-                      type="button"
-                      onClick={() => handleLoginDemo('10467812349', 'ESTEBAN_CONTADOR', 'CONTADOR')}
-                      className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
-                    >
-                      <div>
-                        <span className="font-bold text-slate-800 font-sans block text-[11px]">Modesto Sol EIRL — <span className="text-emerald-600 font-semibold">Rol Contador</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 10467812349 • Usuario: ESTEBAN_CONTADOR</span>
-                      </div>
-                      <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -1893,31 +2002,6 @@ export default function App() {
               </div>
             </button>
 
-            <button
-              onClick={() => {
-                setActiveView('asistente');
-              }}
-              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                activeView === 'asistente'
-                  ? 'bg-purple-950 border-purple-800 text-purple-100 shadow-xs ring-2 ring-purple-500/10'
-                  : darkMode
-                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
-              }`}
-            >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-purple-500 text-white shadow-xs">
-                ✨
-              </div>
-              <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'asistente' ? 'text-purple-200' : labelColor}`}>
-                  {modoSencillo ? "Asistente Contable" : "Asistente Experto"}
-                </h3>
-                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                  {modoSencillo ? "Pregúntale al toque y te responde en fácil" : "Consultor SUNAT con IA"}
-                </span>
-              </div>
-            </button>
-
             {currentUserRole === 'GERENTE' && (
               <button
                 onClick={() => {
@@ -1966,23 +2050,13 @@ export default function App() {
                   </span>
                 </div>
                 <h2 className={`text-xl font-bold tracking-tight font-heading flex items-center gap-2 ${mainTitleColor}`}>
-                  <span>👋 ¡Hola! Bienvenido a tu Asistente MYPE</span>
+                  <span>👋 ¡Hola! Bienvenido a tu Sistema Contable MYPE</span>
                 </h2>
                 <p className={`text-xs max-w-2xl mt-1 leading-relaxed ${subtitleColor}`}>
                   {modoSencillo 
                     ? "Hemos simplificado todos los términos contables difíciles de la SUNAT a ejemplos cotidianos de tu negocio. ¡Usa este tablero interactivo para gestionar tus cuentas de forma súper fácil!" 
                     : "Panel de autogestión contable y tributario para el Régimen MYPE y Especial. Emisión simulada de asientos, cumplimiento del cronograma SUNAT y reportes financieros automáticos."}
                 </p>
-              </div>
-              <div className={`flex items-center gap-2 p-1.5 rounded-2xl border shrink-0 ${darkMode ? 'bg-slate-850 border-slate-750' : 'bg-slate-50 border-slate-100'}`}>
-                <span className="text-[10px] font-bold text-slate-400 uppercase px-2">¿Dudas Contables?</span>
-                <button
-                  onClick={() => setActiveView('asistente')}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10.5px] font-bold py-1.5 px-3.5 rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Consultar Asistente IA</span>
-                </button>
               </div>
             </div>
 
@@ -2002,7 +2076,7 @@ export default function App() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3">
               {/* Card 1: Operaciones (Ventas y Compras) */}
               <button
                 type="button"
@@ -2127,37 +2201,6 @@ export default function App() {
                 }`}>
                   <span>⚖️</span>
                   <span>4. Impuestos</span>
-                </div>
-              </button>
-
-              {/* Card 5: Asistente con IA */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('asistente');
-                }}
-                className={`flex flex-col rounded-2xl border-3 transition-all duration-300 overflow-hidden text-left hover:scale-[1.02] cursor-pointer ${
-                  activeView === 'asistente'
-                    ? 'border-purple-500 shadow-md ring-3 ring-purple-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-purple-400'
-                }`}
-              >
-                <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={imgAsistente}
-                    alt="Robot ayudante"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-1 left-1 bg-purple-600 text-white font-bold text-[8px] px-1.5 py-0.2 rounded shadow-md uppercase">
-                    Asesor Robot
-                  </div>
-                </div>
-                <div className={`p-2 text-[10px] font-bold leading-tight flex items-center gap-1.5 ${
-                  activeView === 'asistente' ? 'bg-purple-600 text-white' : darkMode ? 'bg-slate-850 text-slate-100' : 'bg-slate-50 text-slate-850'
-                }`}>
-                  <span>🤖</span>
-                  <span>5. Ayudante IA</span>
                 </div>
               </button>
             </div>
@@ -2285,6 +2328,7 @@ export default function App() {
             <div className="xl:col-span-12">
               <ConfiguracionEmpresa 
                 currentUserRole={currentUserRole}
+                companyConfig={companyConfig}
                 darkMode={darkMode}
                 onConfigChange={(newConfig) => {
                   setCompanyConfig(newConfig);
@@ -2712,157 +2756,6 @@ export default function App() {
               </div>
             </div>
           )}
-
-          {/* AI EXPERT SCENARIOS HELPER CARD */}
-          {activeView === 'asistente' && (
-            <div className="lg:col-span-4 bg-purple-950 text-purple-100 rounded-3xl p-6 border border-purple-850 shadow-lg flex flex-col justify-between h-[520px] animate-fadeIn font-sans">
-              <div>
-                <span className="text-[9px] font-black text-purple-300 uppercase tracking-widest block mb-2">PROMPTS PREDISEÑADOS</span>
-                <h3 className="text-xl font-bold font-heading text-white tracking-tight mb-2">Escenarios de Auditoría</h3>
-                <p className="text-xs text-purple-200/80 leading-relaxed mb-4">
-                  Haz clic en cualquier escenario tributario del Régimen MYPE para iniciar una consulta especializada con nuestro asesor de Inteligencia Artificial en tiempo real.
-                </p>
-
-                <div className="space-y-2.5">
-                  {[
-                    {
-                      title: "📋 Deducibilidad de Gastos",
-                      desc: "Principio de Causalidad en MYPEs",
-                      prompt: "¿Qué requisitos formales de SUNAT debo cumplir para deducir gastos de representación o movilidad en mi Régimen MYPE?"
-                    },
-                    {
-                      title: "⚖️ Beneficio de IGV Justo",
-                      desc: "Requisitos de Ley 30524",
-                      prompt: "Hola, explícame paso a paso cómo acogerse al IGV Justo de SUNAT y qué pasa con los intereses tributarios durante los 90 días de prórroga."
-                    },
-                    {
-                      title: "📊 Límites del Régimen MYPE",
-                      desc: "Tope de 1700 UIT y tasas de Renta",
-                      prompt: "Cuáles son las tasas progresivas acumulativas del Impuesto a la Renta en el RMT y qué obligaciones formales adicionales tengo al superar las 300 UIT?"
-                    },
-                    {
-                      title: "⚙️ Auditoría de Partida Doble",
-                      desc: "Cuadre del Libro Diario",
-                      prompt: "Ayúdame a auditar mis asientos. ¿Qué cuentas del PCGE intervienen en un cobro bancario de factura comercial según las buenas prácticas de contabilidad peruanas?"
-                    }
-                  ].map((item, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSendChat(item.prompt)}
-                      className="w-full text-left p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/40 transition-all cursor-pointer group"
-                    >
-                      <h4 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors">{item.title}</h4>
-                      <p className="text-[10px] text-purple-300/70">{item.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="text-[10px] text-purple-400 font-mono pt-3 border-t border-purple-900/50 flex justify-between">
-                <span>SUNAT LEY MYPE 2026</span>
-                <span>UIT: S/. 5,500</span>
-              </div>
-            </div>
-          )}
-
-          {/* ASISTENTE REVOLUCIONARIO CONTABLE (CHAT IA) - Bento Box 4 */}
-          {activeView === 'asistente' && (
-            <div id="ai-chat-box" className="lg:col-span-8 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between h-[520px] animate-fadeIn">
-              <div className="flex flex-col h-full justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-2 animate-pulse">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-                        <span className="text-[10px] font-bold text-emerald-600 tracking-wider uppercase">CONSULTA IA TRIBUTARIA PERÚ</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400">Gemini 3.5 Flash</span>
-                    </div>
-                    <div className="flex items-center gap-3 border-b border-slate-100 pb-2 mb-3">
-                      <Sparkles className="w-5 h-5 text-indigo-600" />
-                      <div>
-                        <h2 className="text-slate-900 font-bold text-sm tracking-tight font-heading">Soporte SUNAT Experto</h2>
-                        <p className="text-[11px] text-slate-400">Pregúntale sobre deducción de gastos, IGV Justo, RMT o PCGE</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Message History Scroller */}
-                  <div className="flex-1 overflow-y-auto space-y-3 pr-1 mb-3 scroll-smooth max-h-[220px]">
-                    {chatMessages.map((msg) => (
-                      <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {msg.role !== 'user' && (
-                          <div className="w-7 h-7 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
-                            🇵🇪
-                          </div>
-                        )}
-                        <div className={`p-3 rounded-2xl text-xs max-w-[85%] leading-relaxed ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-50 text-slate-800 border border-slate-200/50 rounded-tl-none whitespace-pre-wrap'}`}>
-                          {msg.content}
-                          <div className={`text-[9px] mt-1.5 text-right ${msg.role === 'user' ? 'text-indigo-200/90' : 'text-slate-400'}`}>
-                            {msg.timestamp}
-                          </div>
-                        </div>
-                        {msg.role === 'user' && (
-                          <div className="w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0">
-                            Yo
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {isChatLoading && (
-                      <div className="flex gap-2.5 justify-start">
-                        <div className="w-7 h-7 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold shrink-0 animate-bounce">
-                          🇵🇪
-                        </div>
-                        <div className="bg-slate-100 text-slate-500 rounded-2xl rounded-tl-none p-3 text-xs flex items-center gap-2">
-                          <span className="animate-pulse">Escribiendo solución contable...</span>
-                          <span className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-                        </div>
-                      </div>
-                    )}
-                    <div ref={chatBottomRef} />
-                  </div>
-
-                  {/* Preset quick buttons & Input form */}
-                  <div className="space-y-2">
-                    {/* Horizontal Scroller presets */}
-                    <div className="flex gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
-                      {PRESET_QUESTIONS.map((q, idx) => (
-                        <button
-                          key={idx}
-                          disabled={isChatLoading}
-                          onClick={() => handleSendChat(q.question)}
-                          className="bg-slate-50 hover:bg-slate-100 text-slate-600 text-[10px] font-semibold py-1 px-2.5 rounded-lg border border-slate-200/60 whitespace-nowrap cursor-pointer hover:border-slate-300 active:bg-slate-200 transition-colors shrink-0"
-                        >
-                          {q.tag}
-                        </button>
-                      ))}
-                    </div>
-
-                    <form 
-                      onSubmit={(e) => { e.preventDefault(); handleSendChat(); }} 
-                      className="flex gap-2 items-center"
-                    >
-                      <input 
-                        type="text"
-                        placeholder="Pregunta ej. ¿Qué gastos de movilidad puedo deducir?"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        disabled={isChatLoading}
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
-                      />
-                      <button 
-                        type="submit"
-                        disabled={isChatLoading || !chatInput.trim()}
-                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white p-2 rounded-xl transition-all cursor-pointer shrink-0"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </form>
-                  </div>
-
-                </div>
-              </div>
-            )}
 
             {/* TREASURY & OPERATIONS CENTER - Bento Box 5 */}
             {activeView === 'transacciones' && (

@@ -8,7 +8,7 @@ export interface SimulatedUser {
   fullName: string;
 }
 
-export const SIMULATED_USERS: SimulatedUser[] = [
+export const INITIAL_SIMULATED_USERS: SimulatedUser[] = [
   {
     ruc: '20601234567',
     usuarioSol: 'GERENTE_MYPE',
@@ -38,3 +38,55 @@ export const SIMULATED_USERS: SimulatedUser[] = [
     fullName: 'Esteban Delgado (Contador Externo)'
   }
 ];
+
+export function getRegisteredUsers(): SimulatedUser[] {
+  try {
+    const stored = localStorage.getItem('mype_users_db');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Error reading user DB from storage', e);
+  }
+  // Initialize with initial users
+  saveUsersToStorage(INITIAL_SIMULATED_USERS);
+  return INITIAL_SIMULATED_USERS;
+}
+
+export function saveUsersToStorage(users: SimulatedUser[]): void {
+  try {
+    localStorage.setItem('mype_users_db', JSON.stringify(users));
+  } catch (e) {
+    console.error('Error saving user DB to storage', e);
+  }
+}
+
+export function registerUser(user: SimulatedUser): boolean {
+  const users = getRegisteredUsers();
+  // Check if a user with same RUC + SOL User already exists
+  const exists = users.some(
+    u => u.ruc === user.ruc && u.usuarioSol.toUpperCase() === user.usuarioSol.toUpperCase()
+  );
+  if (exists) {
+    return false; // Already exists
+  }
+  users.push(user);
+  saveUsersToStorage(users);
+  return true;
+}
+
+export function deleteUser(ruc: string, usuarioSol: string): boolean {
+  const users = getRegisteredUsers();
+  const filtered = users.filter(
+    u => !(u.ruc === ruc && u.usuarioSol.toUpperCase() === usuarioSol.toUpperCase())
+  );
+  if (filtered.length === users.length) {
+    return false;
+  }
+  saveUsersToStorage(filtered);
+  return true;
+}
+
+export function getUsersByRuc(ruc: string): SimulatedUser[] {
+  return getRegisteredUsers().filter(u => u.ruc === ruc);
+}

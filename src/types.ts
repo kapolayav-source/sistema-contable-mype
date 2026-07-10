@@ -65,3 +65,13 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+export interface CompanyConfig {
+  ruc: string;
+  razonSocial: string;
+  direccion: string;
+  telefono: string;
+  correo: string;
+  representanteLegal: string;
+}
+

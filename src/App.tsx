@@ -30,9 +30,11 @@ import {
   LogOut,
   User
 } from 'lucide-react';
-import { Transaction, AccountingEntry, PCGEAccount, ChatMessage, UserRole } from './types';
+import { Transaction, AccountingEntry, PCGEAccount, ChatMessage, UserRole, CompanyConfig } from './types';
 import { PCGE_MYPE, INITIAL_TRANSACTIONS, generateSeatsFromTransaction, PRESET_QUESTIONS, MONTHS_LIST, getSUNATDeadline } from './data';
 import { exportToExcel, exportToPDF } from './exportHelper';
+import { SIMULATED_USERS } from './usuarios';
+import { ConfiguracionEmpresa, DEFAULT_COMPANY_CONFIG } from './components/ConfiguracionEmpresa';
 
 import imgOperaciones from './assets/images/navegacion_operaciones_1783371809409.jpg';
 import imgProductos from './assets/images/navegacion_productos_1783371823633.jpg';
@@ -68,6 +70,13 @@ export default function App() {
       return (localStorage.getItem('mype_user_role') as UserRole) || 'GERENTE';
     } catch {
       return 'GERENTE';
+    }
+  });
+  const [currentUserFullName, setCurrentUserFullName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('mype_user_fullname') || 'Usuario General';
+    } catch {
+      return 'Usuario General';
     }
   });
   const [loginRole, setLoginRole] = useState<UserRole>('EMPLEADO');
@@ -125,7 +134,22 @@ export default function App() {
     }
   });
 
-  const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'asistente'>('transacciones');
+  const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'asistente' | 'configuracion'>('transacciones');
+
+  const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(() => {
+    try {
+      const stored = localStorage.getItem('mype_company_config');
+      return stored ? JSON.parse(stored) : DEFAULT_COMPANY_CONFIG;
+    } catch {
+      return DEFAULT_COMPANY_CONFIG;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mype_company_config', JSON.stringify(companyConfig));
+    } catch {}
+  }, [companyConfig]);
 
   const [modoSencillo, setModoSencillo] = useState<boolean>(() => {
     try {
@@ -526,16 +550,32 @@ export default function App() {
       return;
     }
 
+    // Validate against SIMULATED_USERS
+    const matchedUser = SIMULATED_USERS.find(
+      u => u.ruc === cleanRuc &&
+           u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
+           u.contrasenaSol === cleanPass
+    );
+
+    if (!matchedUser) {
+      setLoginError('Credenciales Clave SOL inválidas. El RUC, Usuario SOL o Contraseña no coinciden con la base de datos de producción real simulada.');
+      return;
+    }
+
+    const finalRole = matchedUser.role;
+
     // Persist session
     localStorage.setItem('mype_logged_in', 'true');
     localStorage.setItem('mype_user_ruc', cleanRuc);
     localStorage.setItem('mype_sol_user', cleanUser);
-    localStorage.setItem('mype_user_role', loginRole);
+    localStorage.setItem('mype_user_role', finalRole);
+    localStorage.setItem('mype_user_fullname', matchedUser.fullName);
 
     setIsLoggedIn(true);
     setRuc(cleanRuc);
     setSolUser(cleanUser);
-    setCurrentUserRole(loginRole);
+    setCurrentUserRole(finalRole);
+    setCurrentUserFullName(matchedUser.fullName);
     setRucLastDigit(cleanRuc[cleanRuc.length - 1]);
     
     // Welcome chat notification or system message update
@@ -544,7 +584,7 @@ export default function App() {
       {
         id: 'login_confirm_' + Date.now(),
         role: 'assistant',
-        content: `📈 **Sesión Iniciada como ${loginRole}.**\n\nBienvenido, la empresa con RUC **${cleanRuc}** ya está conectada al Sistema de Libros Electrónicos y SIRE de SUNAT de forma simulada.\n\nHe adaptado el calendario tributario. Para tu dígito verificador **${cleanRuc[cleanRuc.length - 1]}**, tu fecha límite es el **${getSUNATDeadline(cleanRuc[cleanRuc.length - 1], period).date}**.\n\n*Nota de permisos:* Tienes el rol **${loginRole}**. ${loginRole === 'EMPLEADO' ? 'Solo los roles GERENTE, ADMINISTRADOR o CONTADOR están autorizados para eliminar asientos o limpiar libros contables.' : 'Tienes permisos completos de modificación y eliminación de asientos diario.'}`,
+        content: `📈 **Sesión Iniciada como ${finalRole} por ${matchedUser.fullName}.**\n\nBienvenido, la empresa con RUC **${cleanRuc}** ya está conectada al Sistema de Libros Electrónicos y SIRE de SUNAT.\n\nHe adaptado el calendario tributario. Para tu dígito verificador **${cleanRuc[cleanRuc.length - 1]}**, tu fecha límite es el **${getSUNATDeadline(cleanRuc[cleanRuc.length - 1], period).date}**.\n\n*Nota de permisos:* Tienes el rol **${finalRole}**. ${finalRole === 'EMPLEADO' ? 'Solo los roles GERENTE o ADMINISTRADOR están autorizados para eliminar asientos o limpiar libros contables.' : 'Tienes permisos completos de modificación y eliminación de asientos diarios y configuración general.'}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }
     ]);
@@ -556,10 +596,12 @@ export default function App() {
       localStorage.removeItem('mype_user_ruc');
       localStorage.removeItem('mype_sol_user');
       localStorage.removeItem('mype_user_role');
+      localStorage.removeItem('mype_user_fullname');
       setIsLoggedIn(false);
       setRuc('20601234567');
       setSolUser('CONTADOR_MYPE');
       setCurrentUserRole('GERENTE');
+      setCurrentUserFullName('Usuario General');
       setRucLastDigit('7');
       setLoginRuc('');
       setLoginUser('');
@@ -568,10 +610,19 @@ export default function App() {
   };
 
   const handleLoginDemo = (demoRuc: string, demoUser: string, demoRole: UserRole) => {
-    setLoginRuc(demoRuc);
-    setLoginUser(demoUser);
-    setLoginPassword('ClaveSolDemo2026');
-    setLoginRole(demoRole);
+    // Find matching user from SIMULATED_USERS
+    const matched = SIMULATED_USERS.find(u => u.role === demoRole && u.ruc === demoRuc);
+    if (matched) {
+      setLoginRuc(matched.ruc);
+      setLoginUser(matched.usuarioSol);
+      setLoginPassword(matched.contrasenaSol);
+      setLoginRole(matched.role);
+    } else {
+      setLoginRuc(demoRuc);
+      setLoginUser(demoUser);
+      setLoginPassword('ClaveSolDemo2026');
+      setLoginRole(demoRole);
+    }
   };
 
   const handleAddTransaction = (e: React.FormEvent) => {
@@ -1248,7 +1299,15 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
-                        onClick={() => setLoginRole('EMPLEADO')}
+                        onClick={() => {
+                          setLoginRole('EMPLEADO');
+                          const matched = SIMULATED_USERS.find(u => u.role === 'EMPLEADO');
+                          if (matched) {
+                            setLoginRuc(matched.ruc);
+                            setLoginUser(matched.usuarioSol);
+                            setLoginPassword(matched.contrasenaSol);
+                          }
+                        }}
                         className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
                           loginRole === 'EMPLEADO'
                             ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
@@ -1261,7 +1320,15 @@ export default function App() {
                       
                       <button
                         type="button"
-                        onClick={() => setLoginRole('GERENTE')}
+                        onClick={() => {
+                          setLoginRole('GERENTE');
+                          const matched = SIMULATED_USERS.find(u => u.role === 'GERENTE');
+                          if (matched) {
+                            setLoginRuc(matched.ruc);
+                            setLoginUser(matched.usuarioSol);
+                            setLoginPassword(matched.contrasenaSol);
+                          }
+                        }}
                         className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
                           loginRole === 'GERENTE'
                             ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
@@ -1274,7 +1341,15 @@ export default function App() {
 
                       <button
                         type="button"
-                        onClick={() => setLoginRole('ADMINISTRADOR')}
+                        onClick={() => {
+                          setLoginRole('ADMINISTRADOR');
+                          const matched = SIMULATED_USERS.find(u => u.role === 'ADMINISTRADOR');
+                          if (matched) {
+                            setLoginRuc(matched.ruc);
+                            setLoginUser(matched.usuarioSol);
+                            setLoginPassword(matched.contrasenaSol);
+                          }
+                        }}
                         className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
                           loginRole === 'ADMINISTRADOR'
                             ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
@@ -1287,7 +1362,15 @@ export default function App() {
 
                       <button
                         type="button"
-                        onClick={() => setLoginRole('CONTADOR')}
+                        onClick={() => {
+                          setLoginRole('CONTADOR');
+                          const matched = SIMULATED_USERS.find(u => u.role === 'CONTADOR');
+                          if (matched) {
+                            setLoginRuc(matched.ruc);
+                            setLoginUser(matched.usuarioSol);
+                            setLoginPassword(matched.contrasenaSol);
+                          }
+                        }}
                         className={`text-left p-2 rounded-xl border text-xs transition-all cursor-pointer ${
                           loginRole === 'CONTADOR'
                             ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/10 font-bold text-indigo-950'
@@ -1315,24 +1398,36 @@ export default function App() {
                   <div className="grid grid-cols-1 gap-1.5">
                     <button 
                       type="button"
-                      onClick={() => handleLoginDemo('20601234567', 'DEMO_EMPLEADO', 'EMPLEADO')}
+                      onClick={() => handleLoginDemo('20601234567', 'EMPLEADO_MYPE', 'EMPLEADO')}
                       className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
                     >
                       <div>
                         <span className="font-bold text-slate-800 font-sans block text-[11px]">Empresa Demo SAC — <span className="text-amber-600 font-semibold">Rol Empleado</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Impide correcciones</span>
+                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Usuario: EMPLEADO_MYPE</span>
                       </div>
                       <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
                     </button>
 
                     <button 
                       type="button"
-                      onClick={() => handleLoginDemo('20601234567', 'DEMO_GERENTE', 'GERENTE')}
+                      onClick={() => handleLoginDemo('20601234567', 'ADMIN_MYPE', 'ADMINISTRADOR')}
+                      className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
+                    >
+                      <div>
+                        <span className="font-bold text-slate-800 font-sans block text-[11px]">Empresa Demo SAC — <span className="text-sky-600 font-semibold">Rol Admin</span></span>
+                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Usuario: ADMIN_MYPE</span>
+                      </div>
+                      <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => handleLoginDemo('20601234567', 'GERENTE_MYPE', 'GERENTE')}
                       className="text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2 px-3 text-xs flex justify-between items-center group transition-all cursor-pointer"
                     >
                       <div>
                         <span className="font-bold text-slate-800 font-sans block text-[11px]">Empresa Demo SAC — <span className="text-indigo-600 font-semibold">Rol Gerente</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Control Absoluto</span>
+                        <span className="font-mono text-[10px] text-slate-400">RUC: 20601234567 • Usuario: GERENTE_MYPE</span>
                       </div>
                       <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
                     </button>
@@ -1344,7 +1439,7 @@ export default function App() {
                     >
                       <div>
                         <span className="font-bold text-slate-800 font-sans block text-[11px]">Modesto Sol EIRL — <span className="text-emerald-600 font-semibold">Rol Contador</span></span>
-                        <span className="font-mono text-[10px] text-slate-400">RUC: 10467812349 • Libros Electrónicos</span>
+                        <span className="font-mono text-[10px] text-slate-400">RUC: 10467812349 • Usuario: ESTEBAN_CONTADOR</span>
                       </div>
                       <span className="text-[10px] text-indigo-600 font-bold group-hover:translate-x-1 transition-transform">Ingresar →</span>
                     </button>
@@ -1499,9 +1594,14 @@ export default function App() {
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
             <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <div className="min-w-0">
-                <span className="text-slate-400 font-extrabold text-[8px] uppercase tracking-wider block">SOL RUC EMPRESA</span>
-                <span className="font-mono font-bold text-slate-800 text-[10.5px] block truncate">{solUser} ({ruc})</span>
+              <div className="min-w-0 w-full">
+                <span className="text-slate-400 font-extrabold text-[8px] uppercase tracking-wider block">EMPRESA / RAZÓN SOCIAL</span>
+                <span className="font-sans font-bold text-slate-800 text-[11px] block truncate" title={companyConfig.razonSocial}>
+                  {companyConfig.razonSocial}
+                </span>
+                <span className="font-mono text-[9px] text-slate-400 block truncate">
+                  RUC: {companyConfig.ruc} • SOL: {solUser}
+                </span>
               </div>
             </div>
 
@@ -1817,6 +1917,35 @@ export default function App() {
                 </span>
               </div>
             </button>
+
+            {currentUserRole === 'GERENTE' && (
+              <button
+                onClick={() => {
+                  setActiveView('configuracion');
+                }}
+                className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
+                  activeView === 'configuracion'
+                    ? darkMode
+                      ? 'bg-slate-800 border-slate-600 text-white ring-2 ring-slate-500/20 shadow-xs'
+                      : 'bg-slate-100 border-slate-600/30 text-slate-950 ring-2 ring-slate-500/5 shadow-xs'
+                    : darkMode
+                      ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
+                      : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
+                }`}
+              >
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-slate-600 text-white shadow-xs">
+                  ⚙️
+                </div>
+                <div className="min-w-0">
+                  <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'configuracion' ? '' : labelColor}`}>
+                    {modoSencillo ? "Configuración Empresa" : "Configuración Empresa"}
+                  </h3>
+                  <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
+                    {modoSencillo ? "Datos de la empresa para producción" : "Datos reales y RUC"}
+                  </span>
+                </div>
+              </button>
+            )}
           </div>
 
         </div>
@@ -1827,7 +1956,15 @@ export default function App() {
           {/* USER-FRIENDLY WELCOME & QUICK ACTIONS BANNER */}
           <div className={`transition-colors duration-300 rounded-3xl p-6 border shadow-xs space-y-5 animate-fadeIn ${cardBg}`}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
+              <div className="space-y-1.5 flex-1">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-200 text-[9px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border border-indigo-200/40">
+                    🏢 {companyConfig.razonSocial}
+                  </span>
+                  <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9px] font-mono font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border border-slate-200/40">
+                    RUC: {companyConfig.ruc}
+                  </span>
+                </div>
                 <h2 className={`text-xl font-bold tracking-tight font-heading flex items-center gap-2 ${mainTitleColor}`}>
                   <span>👋 ¡Hola! Bienvenido a tu Asistente MYPE</span>
                 </h2>
@@ -2143,6 +2280,20 @@ export default function App() {
 
           {/* MAIN BENTO GRID */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
+
+          {activeView === 'configuracion' && (
+            <div className="xl:col-span-12">
+              <ConfiguracionEmpresa 
+                currentUserRole={currentUserRole}
+                darkMode={darkMode}
+                onConfigChange={(newConfig) => {
+                  setCompanyConfig(newConfig);
+                  setRuc(newConfig.ruc);
+                  setRucLastDigit(newConfig.ruc.length > 0 ? newConfig.ruc[newConfig.ruc.length - 1] : '7');
+                }}
+              />
+            </div>
+          )}
           
           {/* SUNAT RUC & DEADLINE - BENTO BOX 1 */}
           {activeView === 'sunat' && (
@@ -2905,7 +3056,8 @@ export default function App() {
                           modoSencillo,
                           catalogItems,
                           selectedInventoryProduct,
-                          getKardexForProduct
+                          getKardexForProduct,
+                          companyName: companyConfig.razonSocial
                         })}
                         title="Descargar reporte formateado en Excel (.xls)"
                         className="text-[10.5px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
@@ -2923,7 +3075,9 @@ export default function App() {
                           modoSencillo,
                           catalogItems,
                           selectedInventoryProduct,
-                          getKardexForProduct
+                          getKardexForProduct,
+                          companyName: companyConfig.razonSocial,
+                          representanteLegal: companyConfig.representanteLegal
                         })}
                         title="Imprimir o descargar reporte contable en PDF"
                         className="text-[10.5px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 px-2.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"

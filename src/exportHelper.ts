@@ -19,6 +19,7 @@ export const exportToExcel = (
     catalogItems: any[];
     selectedInventoryProduct?: string;
     getKardexForProduct?: (id: string) => any;
+    companyName?: string;
   }
 ) => {
   const {
@@ -31,7 +32,8 @@ export const exportToExcel = (
     modoSencillo,
     catalogItems,
     selectedInventoryProduct,
-    getKardexForProduct
+    getKardexForProduct,
+    companyName
   } = params;
 
   let title = '';
@@ -419,6 +421,7 @@ export const exportToExcel = (
     <body>
       <div class="title-header">${title.toUpperCase()}</div>
       <div class="meta-text">
+        <strong>RAZÓN SOCIAL / EMPRESA:</strong> ${companyName || solUser} &nbsp;|&nbsp;
         <strong>EMPRESA RUC:</strong> ${ruc} &nbsp;|&nbsp; 
         <strong>PERIODO FISCAL:</strong> ${period} &nbsp;|&nbsp; 
         <strong>RÉGIMEN:</strong> ${regimen === 'RER' ? 'REGIMEN ESPECIAL (RER)' : 'MYPE TRIBUTARIO (RMT)'} &nbsp;|&nbsp;
@@ -463,6 +466,8 @@ export const exportToPDF = (
     catalogItems: any[];
     selectedInventoryProduct?: string;
     getKardexForProduct?: (id: string) => any;
+    companyName?: string;
+    representanteLegal?: string;
   }
 ) => {
   const {
@@ -475,7 +480,9 @@ export const exportToPDF = (
     modoSencillo,
     catalogItems,
     selectedInventoryProduct,
-    getKardexForProduct
+    getKardexForProduct,
+    companyName,
+    representanteLegal
   } = params;
 
   let reportTitle = '';
@@ -885,8 +892,8 @@ export const exportToPDF = (
 
         <div class="grid grid-cols-4 gap-4 mt-5 bg-slate-50 border border-slate-200 p-3 rounded-xl text-[9.5px] font-sans">
           <div>
-            <span class="text-slate-400 font-bold block">EMPRESA (RAZÓN SOCIAL / SOL):</span>
-            <span class="font-extrabold text-slate-800 uppercase">${solUser}</span>
+            <span class="text-slate-400 font-bold block">EMPRESA (RAZÓN SOCIAL):</span>
+            <span class="font-extrabold text-slate-800 uppercase">${companyName || solUser}</span>
           </div>
           <div>
             <span class="text-slate-400 font-bold block">RUC EMISOR:</span>
@@ -921,7 +928,7 @@ export const exportToPDF = (
       <div class="mt-16 grid grid-cols-2 gap-12 text-center text-[10px] no-print-break page-break-inside-avoid">
         <div class="flex flex-col items-center">
           <div class="w-56 border-t border-slate-400 pt-2 flex flex-col items-center">
-            <span class="font-black text-slate-800 uppercase">${solUser}</span>
+            <span class="font-black text-slate-800 uppercase">${representanteLegal || companyName || solUser}</span>
             <span class="text-slate-400 font-bold mt-0.5">REPRESENTANTE LEGAL</span>
             <span class="text-slate-400 font-mono font-semibold text-[8px] mt-0.5">RUC: ${ruc}</span>
           </div>

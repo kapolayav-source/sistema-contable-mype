@@ -676,8 +676,14 @@ export default function App() {
         return;
       }
 
-      if (matchedUser.role === 'GERENTE') {
-        setLoginError('El acceso para Gerentes requiere ingresar el RUC de la Empresa. Por favor, inicia sesión desde la pestaña Gerentes.');
+      // Flexible validation: Only allow ADMINISTRADOR, CONTADOR, or EMPLEADO
+      const allowedRoles = ['ADMINISTRADOR', 'CONTADOR', 'EMPLEADO'];
+      if (!allowedRoles.includes(matchedUser.role.toUpperCase())) {
+        if (matchedUser.role.toUpperCase() === 'GERENTE') {
+          setLoginError('El acceso para Gerentes requiere ingresar el RUC de la Empresa. Por favor, inicia sesión desde la pestaña Gerente.');
+        } else {
+          setLoginError('El rol de este usuario no está autorizado para ingresar como Colaborador.');
+        }
         return;
       }
 

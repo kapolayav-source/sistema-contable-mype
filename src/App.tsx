@@ -216,6 +216,7 @@ export default function App() {
   });
 
   const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'configuracion'>('transacciones');
+  const [moduloActivo, setModuloActivo] = useState<'menu' | 'cronograma' | 'libros' | 'impuestos' | 'simulador' | 'configuracion'>('menu');
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(() => {
     try {
@@ -282,32 +283,38 @@ export default function App() {
   // Tax regime (Fixed to Régimen MYPE Tributario)
   const [regimen] = useState<'RER' | 'RMT'>('RMT');
 
-  // --- Real-Time Simulation States ---
-  const [isRealTimeSimulating, setIsRealTimeSimulating] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('mype_live_simulating') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // --- Real-Time Monitoring (Real Collaborative Data Feed) ---
+  const [isRealTimeSimulating, setIsRealTimeSimulating] = useState<boolean>(false);
 
-  const [realTimeFeed, setRealTimeFeed] = useState<{
-    id: string;
-    time: string;
-    usuario: string;
-    role: string;
-    tipo: 'VENTA' | 'COMPRA';
-    monto: number;
-    documento: string;
-    descripcion: string;
-  }[]>(() => {
-    try {
-      const saved = localStorage.getItem('mype_live_feed');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const realTimeFeed = React.useMemo(() => {
+    // Return last 15 real transactions formatted for the feed
+    const filtered = transactions.filter(tx => !tx.isExtornado);
+    return filtered.map(tx => {
+      const userRole = tx.creadoPor || 'GERENTE';
+      const userFullName = tx.creadoPorNombre || (
+        userRole === 'GERENTE' ? 'Gerente General' :
+        userRole === 'ADMINISTRADOR' ? 'Ana Torres (Admin)' :
+        userRole === 'CONTADOR' ? 'Esteban Delgado (Contador)' :
+        'Juan Quispe (Empleado)'
+      );
+      
+      const parts = tx.fecha.split('-');
+      const year = parts[0] || '2026';
+      const month = parts[1] || '06';
+      const day = parts[2] || '15';
+      
+      return {
+        id: tx.id,
+        time: `${day}/${month}/${year}`,
+        usuario: userFullName,
+        role: userRole,
+        tipo: tx.tipo,
+        monto: tx.total,
+        documento: tx.documento,
+        descripcion: tx.glosa
+      };
+    });
+  }, [transactions]);
 
   const [activeToast, setActiveToast] = useState<{
     id: string;
@@ -432,6 +439,42 @@ export default function App() {
     localStorage.setItem('mype_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
+  const prevFirstTxIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (transactions.length > 0) {
+      const firstTx = transactions[0];
+      if (prevFirstTxIdRef.current !== null && prevFirstTxIdRef.current !== firstTx.id) {
+        // A new transaction was added! Let's trigger a toast
+        const userRole = firstTx.creadoPor || 'GERENTE';
+        const userFullName = firstTx.creadoPorNombre || (
+          userRole === 'GERENTE' ? 'Gerente General' :
+          userRole === 'ADMINISTRADOR' ? 'Ana Torres (Admin)' :
+          userRole === 'CONTADOR' ? 'Esteban Delgado (Contador)' :
+          'Juan Quispe (Empleado)'
+        );
+        
+        const roleIcon = userRole === 'EMPLEADO' ? '💼' : userRole === 'ADMINISTRADOR' ? '🔧' : userRole === 'CONTADOR' ? '🧮' : '👔';
+        
+        setActiveToast({
+          id: firstTx.id,
+          title: `${roleIcon} Operación por ${userFullName.split(' ')[0]}`,
+          message: `${firstTx.glosa || 'Transacción registrada en el libro Diario'}`,
+          role: userRole,
+          amount: firstTx.total,
+          tipo: (firstTx.tipo === 'VENTA' || firstTx.tipo === 'COBRO') ? 'VENTA' : 'COMPRA'
+        });
+
+        // Automatically change working period to match this transaction's month so it's immediately visible
+        const txPeriod = firstTx.fecha.slice(0, 7);
+        setPeriod(txPeriod);
+      }
+      prevFirstTxIdRef.current = firstTx.id;
+    } else {
+      prevFirstTxIdRef.current = null;
+    }
+  }, [transactions]);
+
   // --- Supabase Transaction Sync Effects ---
   const prevTransactionsRef = useRef<Transaction[]>([]);
 
@@ -476,13 +519,16 @@ export default function App() {
           }));
 
           // Avoid updating state if the contents are identical (prevent render thrashing)
-          if (JSON.stringify(mapped) !== JSON.stringify(transactions)) {
-            setTransactions(mapped);
-            prevTransactionsRef.current = mapped;
-          }
+          setTransactions(prev => {
+            if (JSON.stringify(mapped) !== JSON.stringify(prev)) {
+              prevTransactionsRef.current = mapped;
+              return mapped;
+            }
+            return prev;
+          });
         }
       } catch (err: any) {
-        console.error('Error fetching transactions from Supabase:', err);
+        console.warn('Supabase fetch status: unable to retrieve transactions.', err.message || err);
         setSupabaseError(err.message || 'Error de conexión o tablas faltantes en Supabase');
       }
     };
@@ -491,7 +537,7 @@ export default function App() {
 
     const interval = setInterval(fetchTransactions, 8000);
     return () => clearInterval(interval);
-  }, [ruc, transactions]);
+  }, [ruc]);
 
   // 2. Push local changes (inserts, updates, deletes) to Supabase cloud
   useEffect(() => {
@@ -520,7 +566,7 @@ export default function App() {
             if (error) throw error;
             setSupabaseError(null);
           } catch (err: any) {
-            console.error('Error deleting transactions from Supabase:', err);
+            console.warn('Supabase delete status: unable to delete transactions.', err.message || err);
             setSupabaseError(err.message || 'Error al eliminar fila en Supabase');
           }
         }
@@ -561,7 +607,7 @@ export default function App() {
         if (error) throw error;
         setSupabaseError(null);
       } catch (err: any) {
-        console.error('Error syncing transactions to Supabase:', err);
+        console.warn('Supabase sync status: unable to sync transactions.', err.message || err);
         setSupabaseError(err.message || 'Error de sincronización con Supabase (Verifica que creaste las tablas)');
       }
 
@@ -575,13 +621,7 @@ export default function App() {
     localStorage.setItem('mype_modo_sencillo', String(modoSencillo));
   }, [modoSencillo]);
 
-  useEffect(() => {
-    localStorage.setItem('mype_live_simulating', String(isRealTimeSimulating));
-  }, [isRealTimeSimulating]);
 
-  useEffect(() => {
-    localStorage.setItem('mype_live_feed', JSON.stringify(realTimeFeed));
-  }, [realTimeFeed]);
 
   // Toast notification auto-dismissal
   useEffect(() => {
@@ -593,138 +633,9 @@ export default function App() {
     }
   }, [activeToast]);
 
-  // Simulator core function
-  const triggerSimulatedTransaction = () => {
-    // 1. Pick a random registered user of current RUC or fallback to some employee names
-    const currentRuc = ruc || '20601234567';
-    const rucUsers = getRegisteredUsers().filter(u => u.ruc === currentRuc);
-    const nonGerenteUsers = rucUsers.filter(u => u.role !== 'GERENTE');
-    
-    let simulatedWorker = {
-      fullName: 'Juan Quispe (Asistente de Ventas)',
-      role: 'EMPLEADO',
-      usuarioSol: 'EMPLEADO_MYPE'
-    };
-    
-    if (nonGerenteUsers.length > 0) {
-      const randUser = nonGerenteUsers[Math.floor(Math.random() * nonGerenteUsers.length)];
-      simulatedWorker = {
-        fullName: randUser.fullName,
-        role: randUser.role,
-        usuarioSol: randUser.usuarioSol
-      };
-    } else {
-      const templates = [
-        { fullName: 'Juan Quispe (Asistente de Ventas)', role: 'EMPLEADO', usuarioSol: 'JUAN_VENTAS' },
-        { fullName: 'Ana Torres (Administradora)', role: 'ADMINISTRADOR', usuarioSol: 'ANA_ADMIN' },
-        { fullName: 'Sofía Ramirez (Cajera MYPE)', role: 'EMPLEADO', usuarioSol: 'SOFIA_CAJA' },
-        { fullName: 'Esteban Delgado (Contador Externo)', role: 'CONTADOR', usuarioSol: 'ESTEBAN_CONTADOR' }
-      ];
-      simulatedWorker = templates[Math.floor(Math.random() * templates.length)];
-    }
 
-    // 2. Select a random Catalog Item
-    const currentCatalog = catalogItems.length > 0 ? catalogItems : MOCK_CATALOG;
-    const randItem = currentCatalog[Math.floor(Math.random() * currentCatalog.length)];
 
-    // 3. Determine transaction type (VENTA or COMPRA)
-    const isVenta = randItem.tipo === 'VENTA' || Math.random() > 0.4;
-    const tipo: 'VENTA' | 'COMPRA' = isVenta ? 'VENTA' : 'COMPRA';
 
-    // 4. Generate random quantities and amounts
-    const cantidad = randItem.isPhysical ? Math.floor(1 + Math.random() * 8) : 1;
-    const precioUnitario = randItem.precio || 500;
-    const baseMonto = precioUnitario * cantidad;
-    
-    const igv = Math.round(baseMonto * 0.18 * 100) / 100;
-    const total = baseMonto + igv;
-
-    // Sequential serial/number simulation
-    const serial = isVenta ? 'F001' : 'E001';
-    const docNum = Math.floor(100 + Math.random() * 899);
-    const documento = `${serial}-${String(docNum).padStart(8, '0')}`;
-
-    // Get current date formatted
-    const today = new Date().toISOString().split('T')[0];
-
-    // Dummy RUCs for client/provider
-    const rucsPeruanos = ['20100100101', '20501294812', '20491823901', '10467812349', '20601122334', '10023456789'];
-    const rucClienteProveedor = rucsPeruanos[Math.floor(Math.random() * rucsPeruanos.length)];
-
-    const glosa = isVenta 
-      ? `Venta de ${randItem.desc} por ${simulatedWorker.fullName.split(' ')[0]}`
-      : `Adquisición de ${randItem.desc} para operaciones por ${simulatedWorker.fullName.split(' ')[0]}`;
-
-    // Create New Transaction Object
-    const newTx: Transaction = {
-      id: 'tx_sim_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-      fecha: today,
-      tipo,
-      montoBase: baseMonto,
-      igv,
-      total,
-      glosa,
-      rucClienteProveedor,
-      documento,
-      creadoPor: simulatedWorker.role as any,
-      formaPago: 'Efectivo',
-      cuentaOrigen: isVenta ? '1212' : '4212',
-      cuentaDestino: isVenta ? '1041' : '101',
-      catalogItemId: randItem.id,
-      cantidad,
-      precioUnitario,
-      esMovimientoInventario: randItem.isPhysical,
-      tipoInventario: isVenta ? 'SALIDA' : 'INGRESO'
-    };
-
-    // Save
-    setTransactions(prev => [newTx, ...prev]);
-
-    // Add to live feed state
-    const timestamp = new Date().toLocaleTimeString('es-PE', { hour12: false });
-    const feedItem = {
-      id: 'feed_' + Date.now(),
-      time: timestamp,
-      usuario: simulatedWorker.fullName,
-      role: simulatedWorker.role,
-      tipo,
-      monto: total,
-      documento,
-      descripcion: glosa
-    };
-
-    setRealTimeFeed(prev => [feedItem, ...prev].slice(0, 15)); // Keep last 15 items
-    
-    // Show temporary visual Toast
-    setActiveToast({
-      id: feedItem.id,
-      title: `${feedItem.role === 'EMPLEADO' ? '💼' : feedItem.role === 'ADMINISTRADOR' ? '🔧' : '🧮'} Actividad de ${feedItem.usuario.split(' ')[0]}`,
-      message: feedItem.descripcion,
-      role: feedItem.role,
-      amount: feedItem.monto,
-      tipo: feedItem.tipo
-    });
-  };
-
-  // Background timer interval for simulation
-  useEffect(() => {
-    if (!isRealTimeSimulating) return;
-
-    // Trigger one almost immediately (2s)
-    const initialTimer = setTimeout(() => {
-      triggerSimulatedTransaction();
-    }, 2000);
-
-    // Then trigger every 14 seconds
-    const interval = setInterval(() => {
-      triggerSimulatedTransaction();
-    }, 14000);
-
-    return () => {
-      clearTimeout(initialTimer);
-      clearInterval(interval);
-    };
-  }, [isRealTimeSimulating, catalogItems, ruc]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
@@ -744,6 +655,28 @@ export default function App() {
   // --- Calculations ---
   // Period filter
   const filteredTransactions = transactions.filter(tx => tx.fecha.startsWith(period));
+
+  const dynamicMonthsList = React.useMemo(() => {
+    const list = [...MONTHS_LIST];
+    transactions.forEach(tx => {
+      if (tx.fecha && tx.fecha.length >= 7) {
+        const value = tx.fecha.slice(0, 7); // "YYYY-MM"
+        if (!list.some(m => m.value === value)) {
+          const [year, month] = value.split('-');
+          const monthNames = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+          ];
+          const monthIndex = parseInt(month, 10) - 1;
+          const label = (monthIndex >= 0 && monthIndex < 12)
+            ? `${monthNames[monthIndex]} ${year}`
+            : value;
+          list.push({ value, label });
+        }
+      }
+    });
+    return list.sort((a, b) => a.value.localeCompare(b.value));
+  }, [transactions]);
 
   // Dynamic Kardex Calculator for physical items
   const getKardexForProduct = (productId: string) => {
@@ -925,6 +858,107 @@ export default function App() {
   const totalDebeGlobal = allEntries.reduce((sum, e) => sum + e.debe, 0);
   const totalHaberGlobal = allEntries.reduce((sum, e) => sum + e.haber, 0);
   const isBalanced = Math.abs(totalDebeGlobal - totalHaberGlobal) < 0.01;
+
+  // --- TOP-LEVEL SIMULATION CALCULATIONS ---
+  const entries = allPeriodEntries;
+  
+  // --- ACTIVO ---
+  const cajaBancos = entries
+    .filter(e => e.cuenta.startsWith('10'))
+    .reduce((sum, e) => sum + (e.debe - e.haber), 0);
+
+  const ctasPorCobrar = entries
+    .filter(e => e.cuenta.startsWith('12'))
+    .reduce((sum, e) => sum + (e.debe - e.haber), 0);
+
+  const mercaderias = entries
+    .filter(e => e.cuenta.startsWith('20'))
+    .reduce((sum, e) => sum + (e.debe - e.haber), 0);
+
+  // --- PASIVO ---
+  const tributos = entries
+    .filter(e => e.cuenta.startsWith('40'))
+    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  const planillas = entries
+    .filter(e => e.cuenta.startsWith('41'))
+    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  const ctasPorPagar = entries
+    .filter(e => e.cuenta.startsWith('42'))
+    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  // --- PATRIMONIO ---
+  const capitalSocial = entries
+    .filter(e => e.cuenta.startsWith('50'))
+    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  const ingresos = entries
+    .filter(e => e.cuenta.startsWith('7'))
+    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  const gastos = entries
+    .filter(e => e.cuenta.startsWith('6') || e.cuenta.startsWith('9'))
+    .reduce((sum, e) => sum + (e.debe - e.haber), 0);
+
+  const utilidadNeto = ingresos - gastos;
+
+  // --- DYNAMIC SIMULATION ENGINE ---
+  let cajaBancosSim = cajaBancos;
+  let ctasPorCobrarSim = ctasPorCobrar;
+  let mercaderiasSim = mercaderias;
+  let tributosSim = tributos;
+  let planillasSim = planillas;
+  let ctasPorPagarSim = ctasPorPagar;
+  let capitalSocialSim = capitalSocial;
+  let ingresosSim = ingresos;
+  let gastosSim = gastos;
+
+  if (simulatedAction === 'VENTA_EFECTIVO') {
+    cajaBancosSim += 2000;
+    ingresosSim += 1694.92; // sin IGV
+    tributosSim += 305.08; // 18% IGV de venta
+  } else if (simulatedAction === 'COMPRA_CREDITO') {
+    mercaderiasSim += 847.46; // sin IGV
+    tributosSim -= 152.54; // crédito fiscal reduce tributos a pagar
+    ctasPorPagarSim += 1000; // deudas
+  } else if (simulatedAction === 'COBRO_EFECTIVO') {
+    cajaBancosSim += 500;
+    ctasPorCobrarSim -= 500;
+  } else if (simulatedAction === 'PAGO_IMPUESTOS') {
+    cajaBancosSim -= 300;
+    tributosSim -= 300;
+  }
+
+  const utilidadNetoSim = ingresosSim - gastosSim;
+  const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim;
+  const totalPasivosSim = tributosSim + planillasSim + ctasPorPagarSim;
+  const totalPatrimonioSim = capitalSocialSim + utilidadNetoSim;
+  const totalPasivoYPatrimonioSim = totalPasivosSim + totalPatrimonioSim;
+  const balancesCuadranSim = Math.abs(totalActivosSim - totalPasivoYPatrimonioSim) < 0.01;
+
+  // Calculate percentages for the stacked visualization chart
+  const sumTotal = totalActivosSim + totalPasivoYPatrimonioSim;
+  const pctActivos = sumTotal > 0 ? (totalActivosSim / sumTotal) * 100 : 50;
+  const pctPasivosYPat = sumTotal > 0 ? (totalPasivoYPatrimonioSim / sumTotal) * 100 : 50;
+
+  // Financial Health Score & Traffic Light Indicator
+  let healthBadge = "🟢 EXCELENTE SALUD";
+  let healthColor = "border-emerald-200 bg-emerald-50 text-emerald-900";
+  let healthDot = "bg-emerald-500";
+  let healthAdvice = "Tus pertenencias e inversión propia superan ampliamente las deudas comerciales de tu empresa. ¡Tu negocio se encuentra en una situación contable magnífica!";
+  
+  if (totalPasivosSim > totalActivosSim) {
+    healthBadge = "🔴 ALERTA DE DEUDA ALTA";
+    healthColor = "border-rose-200 bg-rose-50 text-rose-900";
+    healthDot = "bg-rose-500";
+    healthAdvice = "Cuidado: Tus compromisos de pago con terceros superan el total de tus bienes actuales. Recomendamos impulsar tus ventas al contado o refinanciar deudas con proveedores.";
+  } else if (totalPasivosSim > 0 && (totalPasivosSim / (totalActivosSim || 1)) > 0.6) {
+    healthBadge = "🟡 DEUDA MODERADA";
+    healthColor = "border-amber-200 bg-amber-50 text-amber-900";
+    healthDot = "bg-amber-500";
+    healthAdvice = "Tus deudas acumuladas representan más del 60% de tus activos totales. Vigila tus deudas corrientes para evitar cuellos de botella con la liquidez de tu caja.";
+  }
 
   // Deadline info
   const deadlineInfo = getSUNATDeadline(rucLastDigit, period);
@@ -1249,6 +1283,7 @@ export default function App() {
       rucClienteProveedor: (formTipo === 'PLANILLA' || formTipo === 'APERTURA') ? ruc : (formRuc ? formRuc.trim() : (formTipo === 'VENTA' ? '20100200300' : '20500600700')),
       documento: resolvedDocumento,
       creadoPor: currentUserRole,
+      creadoPorNombre: currentUserFullName,
       sujetoDetraccion: (formTipo === 'VENTA' || formTipo === 'COMPRA') ? sujetoDetraccion : false,
       tasaDetraccion: (formTipo === 'VENTA' || formTipo === 'COMPRA') ? tasaDetraccion : undefined,
       montoDetraccion: (formTipo === 'VENTA' || formTipo === 'COMPRA') && sujetoDetraccion ? calculatedDetraccion : undefined,
@@ -1364,6 +1399,7 @@ export default function App() {
       rucClienteProveedor: mRuc ? mRuc.trim() : (activeModal === 'VENTA' || activeModal === 'COBRO' ? '20100200300' : '20500600700'),
       documento: resolvedDocumento,
       creadoPor: currentUserRole,
+      creadoPorNombre: currentUserFullName,
       sujetoDetraccion: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? sujetoDetraccion : false,
       tasaDetraccion: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? tasaDetraccion : undefined,
       montoDetraccion: (activeModal === 'VENTA' || activeModal === 'COMPRA') && sujetoDetraccion ? calculatedDetraccion : undefined,
@@ -2172,7 +2208,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* COLOR PALETTE & DARK MODE TOGGLE */}
+          {/* DARK MODE TOGGLE */}
           <div className={`p-5 rounded-3xl border transition-colors duration-300 space-y-3.5 ${cardBg}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -2192,43 +2228,6 @@ export default function App() {
                   }`}
                 />
               </button>
-            </div>
-
-            {/* COLOR PALETTE EXPLANATION */}
-            <div className={`space-y-2 border-t pt-3 border-dashed ${darkMode ? 'border-slate-800' : 'border-slate-150'}`}>
-              <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-                🎨 Paleta de Impuestos MYPE
-              </span>
-              <div className="grid grid-cols-1 gap-1.5 text-[9.5px]">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-black shrink-0 border border-slate-300"></div>
-                  <span className={`font-medium ${labelColor}`}>Negro: Estructura Principal</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0"></div>
-                  <span className={`font-medium ${labelColor}`}>Azul: Ventas e Ingresos (💰)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></div>
-                  <span className={`font-medium ${labelColor}`}>Rojo: Compras y Gastos (🛒)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-purple-600 shrink-0"></div>
-                  <span className={`font-medium ${labelColor}`}>Morado: Asesor Inteligente (🤖)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0"></div>
-                  <span className={`font-medium ${labelColor}`}>Naranja: Impuestos SUNAT (⚖️)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0"></div>
-                  <span className={`font-medium ${labelColor}`}>Celeste: Dinero en Caja (🏦)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-white shrink-0 border border-slate-400"></div>
-                  <span className={`font-medium ${labelColor}`}>Blanco: Reportes Contables</span>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -2294,7 +2293,7 @@ export default function App() {
                   onChange={(e) => setPeriod(e.target.value)}
                   className="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer w-full"
                 >
-                  {MONTHS_LIST.map(m => (
+                  {dynamicMonthsList.map(m => (
                     <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
                 </select>
@@ -2329,52 +2328,24 @@ export default function App() {
             </button>
           </div>
 
-          {/* SIMULADOR EN TIEMPO REAL - MYPE LIVE FEED */}
+          {/* MONITOREO EN TIEMPO REAL - COLABORADORES REALES */}
           <div className={`${cardBg} p-5 rounded-3xl space-y-3.5`}>
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                  {isRealTimeSimulating && (
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  )}
-                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRealTimeSimulating ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">MYPE en Tiempo Real</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Monitoreo en Tiempo Real</span>
               </div>
-              <button 
-                onClick={() => setIsRealTimeSimulating(prev => !prev)}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isRealTimeSimulating ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
-                }`}
-                title="Alternar Simulación en Tiempo Real"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
-                    isRealTimeSimulating ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-widest border border-emerald-100 dark:border-emerald-900/30">
+                En Vivo
+              </span>
             </div>
 
             <div className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-              {isRealTimeSimulating ? (
-                <p>🟢 <strong>Monitoreo Activo:</strong> Tus colaboradores registrados (Asistente, Administradora, Cajera) están ingresando compras y ventas en vivo. Toda la información de balances e impuestos se actualiza al instante.</p>
-              ) : (
-                <p>⚪ <strong>Pausado:</strong> Activa el monitoreo en tiempo real para simular transacciones automáticas de tus empleados y visualizar balances dinámicos.</p>
-              )}
+              <p>🟢 <strong>Operaciones Reales:</strong> Registra las transacciones del personal de la empresa en vivo. Los balances, asientos, kárdex y liquidación de impuestos se recalculan al instante.</p>
             </div>
-
-            {/* Manual simulator trigger */}
-            <button
-              type="button"
-              onClick={triggerSimulatedTransaction}
-              className={`w-full text-center text-[10px] font-black py-2 px-3 rounded-xl transition-all border cursor-pointer flex items-center justify-center gap-1.5 ${
-                darkMode ? 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-emerald-400' : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'
-              }`}
-            >
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: isRealTimeSimulating ? '3s' : '0s' }} />
-              <span>Forzar Transacción de Empleado</span>
-            </button>
 
             {/* Ticker / Feed list */}
             {realTimeFeed.length > 0 && (
@@ -2388,9 +2359,10 @@ export default function App() {
                         <span className={`font-black px-1.5 py-0.2 rounded uppercase ${
                           item.role === 'EMPLEADO' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' : 
                           item.role === 'ADMINISTRADOR' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400' : 
+                          item.role === 'GERENTE' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400' : 
                           'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
                         }`}>
-                          {item.role === 'EMPLEADO' ? 'Emp' : item.role === 'ADMINISTRADOR' ? 'Adm' : 'Cont'}
+                          {item.role === 'EMPLEADO' ? 'Emp' : item.role === 'ADMINISTRADOR' ? 'Adm' : item.role === 'GERENTE' ? 'Ger' : 'Cont'}
                         </span>
                       </div>
                       <span className="font-bold text-slate-700 dark:text-slate-200 block truncate">{item.usuario.split(' ')[0]}: {item.descripcion}</span>
@@ -2488,14 +2460,41 @@ export default function App() {
             <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block px-2.5 mb-1">
               {modoSencillo ? "MENÚ DEL NEGOCIO" : "NAVEGACIÓN"}
             </span>
+
+            <button
+              onClick={() => {
+                setModuloActivo('menu');
+              }}
+              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
+                moduloActivo === 'menu'
+                  ? darkMode 
+                    ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'bg-indigo-50 border-indigo-500/30 text-indigo-950 ring-2 ring-indigo-500/5 shadow-xs'
+                  : darkMode
+                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
+                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
+              }`}
+            >
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-indigo-650 text-white shadow-xs">
+                🏠
+              </div>
+              <div className="min-w-0">
+                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'menu' ? '' : labelColor}`}>
+                  Menú Principal (Hub)
+                </h3>
+                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
+                  Vista simplificada de módulos
+                </span>
+              </div>
+            </button>
             
             <button
               onClick={() => {
-                setActiveView('transacciones');
-                setSelectedDiarioTab('diario');
+                setModuloActivo('libros');
+                setSelectedDiarioTab('ventas');
               }}
               className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                activeView === 'transacciones'
+                moduloActivo === 'libros' && (selectedDiarioTab === 'ventas' || selectedDiarioTab === 'compras')
                   ? darkMode 
                     ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-100 ring-2 ring-emerald-500/20 shadow-xs'
                     : 'bg-emerald-50 border-emerald-500/30 text-emerald-950 ring-2 ring-emerald-500/5 shadow-xs'
@@ -2508,7 +2507,7 @@ export default function App() {
                 💼
               </div>
               <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'transacciones' ? '' : labelColor}`}>
+                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'libros' && (selectedDiarioTab === 'ventas' || selectedDiarioTab === 'compras') ? '' : labelColor}`}>
                   {modoSencillo ? "Mis Ventas, Compras y Caja" : "Operaciones & Caja"}
                 </h3>
                 <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
@@ -2519,11 +2518,11 @@ export default function App() {
 
             <button
               onClick={() => {
-                setActiveView('catalogo');
+                setModuloActivo('libros');
                 setSelectedDiarioTab('catalogo');
               }}
               className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                activeView === 'catalogo'
+                moduloActivo === 'libros' && selectedDiarioTab === 'catalogo'
                   ? darkMode
                     ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs'
                     : 'bg-indigo-50 border-indigo-500/30 text-indigo-950 ring-2 ring-indigo-500/5 shadow-xs'
@@ -2536,7 +2535,7 @@ export default function App() {
                 🏷️
               </div>
               <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'catalogo' ? '' : labelColor}`}>
+                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'libros' && selectedDiarioTab === 'catalogo' ? '' : labelColor}`}>
                   {modoSencillo ? "Lista de mis Productos" : "Catálogo Comercial"}
                 </h3>
                 <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
@@ -2547,11 +2546,11 @@ export default function App() {
 
             <button
               onClick={() => {
-                setActiveView('libros');
+                setModuloActivo('libros');
                 setSelectedDiarioTab('diario');
               }}
               className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                activeView === 'libros'
+                moduloActivo === 'libros' && selectedDiarioTab !== 'ventas' && selectedDiarioTab !== 'compras' && selectedDiarioTab !== 'catalogo'
                   ? darkMode
                     ? 'bg-slate-800 border-slate-600 text-white ring-2 ring-slate-500/20 shadow-xs'
                     : 'bg-slate-100 border-slate-600/30 text-slate-950 ring-2 ring-slate-500/5 shadow-xs'
@@ -2560,11 +2559,11 @@ export default function App() {
                     : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
               }`}
             >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-slate-800 text-white shadow-xs">
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-slate-850 text-white shadow-xs">
                 📖
               </div>
               <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'libros' ? '' : labelColor}`}>
+                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'libros' && selectedDiarioTab !== 'ventas' && selectedDiarioTab !== 'compras' && selectedDiarioTab !== 'catalogo' ? '' : labelColor}`}>
                   {modoSencillo ? "Mis Libros para SUNAT" : "Libros y Reportes"}
                 </h3>
                 <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
@@ -2575,10 +2574,10 @@ export default function App() {
 
             <button
               onClick={() => {
-                setActiveView('sunat');
+                setModuloActivo('impuestos');
               }}
               className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                activeView === 'sunat'
+                moduloActivo === 'impuestos'
                   ? darkMode
                     ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs'
                     : 'bg-indigo-50 border-indigo-500/30 text-indigo-950 ring-2 ring-indigo-500/5 shadow-xs'
@@ -2591,7 +2590,7 @@ export default function App() {
                 🏛️
               </div>
               <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'sunat' ? '' : labelColor}`}>
+                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'impuestos' ? '' : labelColor}`}>
                   {modoSencillo ? "Cálculo de Impuestos" : "Liquidación SUNAT"}
                 </h3>
                 <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
@@ -2603,10 +2602,10 @@ export default function App() {
             {currentUserRole === 'GERENTE' && (
               <button
                 onClick={() => {
-                  setActiveView('configuracion');
+                  setModuloActivo('configuracion');
                 }}
                 className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                  activeView === 'configuracion'
+                  moduloActivo === 'configuracion'
                     ? darkMode
                       ? 'bg-slate-800 border-slate-600 text-white ring-2 ring-slate-500/20 shadow-xs'
                       : 'bg-slate-100 border-slate-600/30 text-slate-950 ring-2 ring-slate-500/5 shadow-xs'
@@ -2619,7 +2618,7 @@ export default function App() {
                   ⚙️
                 </div>
                 <div className="min-w-0">
-                  <h3 className={`font-bold text-[11px] leading-tight ${activeView === 'configuracion' ? '' : labelColor}`}>
+                  <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'configuracion' ? '' : labelColor}`}>
                     {modoSencillo ? "Configuración Empresa" : "Configuración Empresa"}
                   </h3>
                   <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
@@ -2635,268 +2634,165 @@ export default function App() {
         {/* RIGHT MAIN WORKSPACE */}
         <div className="lg:col-span-9 space-y-6">
 
-          {/* USER-FRIENDLY WELCOME & QUICK ACTIONS BANNER */}
-          <div className={`transition-colors duration-300 rounded-3xl p-6 border shadow-xs space-y-5 animate-fadeIn ${cardBg}`}>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="space-y-1.5 flex-1">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-200 text-[9px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border border-indigo-200/40">
-                    🏢 {companyConfig.razonSocial}
-                  </span>
-                  <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9px] font-mono font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border border-slate-200/40">
-                    RUC: {companyConfig.ruc}
-                  </span>
+          {/* HUB DE MÓDULOS (VISTA MENÚ PRINCIPAL) */}
+          {moduloActivo === 'menu' ? (
+            <div className="space-y-6 animate-fadeIn">
+              {/* USER-FRIENDLY WELCOME BANNER */}
+              <div className={`transition-colors duration-300 rounded-3xl p-6 border shadow-xs space-y-5 ${cardBg}`}>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-200 text-[9px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border border-indigo-200/40">
+                        🏢 {companyConfig.razonSocial}
+                      </span>
+                      <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9px] font-mono font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full border border-slate-200/40">
+                        RUC: {companyConfig.ruc}
+                      </span>
+                    </div>
+                    <h2 className={`text-xl font-bold tracking-tight font-heading flex items-center gap-2 ${mainTitleColor}`}>
+                      <span>👋 ¡Hola! Bienvenido a Kipurev MYPE</span>
+                    </h2>
+                    <p className={`text-xs max-w-2xl mt-1 leading-relaxed ${subtitleColor}`}>
+                      {modoSencillo 
+                        ? "Hemos simplificado todos los términos contables difíciles de la SUNAT a ejemplos cotidianos de tu negocio. ¡Elige un módulo para comenzar a gestionar tus cuentas!" 
+                        : "Panel de autogestión contable y tributario para el Régimen MYPE y Especial. Selecciona un módulo para gestionar transacciones, impuestos y simulaciones financieras."}
+                    </p>
+                  </div>
                 </div>
-                <h2 className={`text-xl font-bold tracking-tight font-heading flex items-center gap-2 ${mainTitleColor}`}>
-                  <span>👋 ¡Hola! Bienvenido a tu Sistema Contable MYPE</span>
-                </h2>
-                <p className={`text-xs max-w-2xl mt-1 leading-relaxed ${subtitleColor}`}>
-                  {modoSencillo 
-                    ? "Hemos simplificado todos los términos contables difíciles de la SUNAT a ejemplos cotidianos de tu negocio. ¡Usa este tablero interactivo para gestionar tus cuentas de forma súper fácil!" 
-                    : "Panel de autogestión contable y tributario para el Régimen MYPE y Especial. Emisión simulada de asientos, cumplimiento del cronograma SUNAT y reportes financieros automáticos."}
-                </p>
+              </div>
+
+              {/* 4 CARDS NAVIGATION HUB */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* TARJETA 1: Calendario & Alertas */}
+                <button
+                  type="button"
+                  onClick={() => setModuloActivo('cronograma')}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-emerald-500/50 hover:shadow-lg hover:scale-[1.01]`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center text-2xl shadow-xs">
+                      📅
+                    </div>
+                    <span className="text-[10px] font-black tracking-wider bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 uppercase px-2.5 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/40">
+                      Módulo 1
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
+                    Calendario & Alertas
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${subtitleColor}`}>
+                    Sincronización del vencimiento mensual de la SUNAT, alertas de plazos tributarios y estado de tu RUC para evitar contingencias.
+                  </p>
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Último dígito RUC: {rucLastDigit}
+                  </div>
+                </button>
+
+                {/* TARJETA 2: Libros Electrónicos (SIRE) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModuloActivo('libros');
+                    setSelectedDiarioTab('ventas');
+                  }}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-indigo-500/50 hover:shadow-lg hover:scale-[1.01]`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-950/50 flex items-center justify-center text-2xl shadow-xs">
+                      📖
+                    </div>
+                    <span className="text-[10px] font-black tracking-wider bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 uppercase px-2.5 py-1 rounded-full border border-indigo-100 dark:border-indigo-900/40">
+                      Módulo 2
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
+                    Libros Electrónicos (SIRE)
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${subtitleColor}`}>
+                    Registro interactivo de Ventas y Compras, emisión de asientos del Libro Diario, Mayor y reportes estructurados para exportación oficial.
+                  </p>
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 font-mono uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    {transactions.length} Asientos Registrados
+                  </div>
+                </button>
+
+                {/* TARJETA 3: Impuestos & Planeamiento */}
+                <button
+                  type="button"
+                  onClick={() => setModuloActivo('impuestos')}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-rose-500/50 hover:shadow-lg hover:scale-[1.01]`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/50 flex items-center justify-center text-2xl shadow-xs">
+                      ⚖️
+                    </div>
+                    <span className="text-[10px] font-black tracking-wider bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 uppercase px-2.5 py-1 rounded-full border border-rose-100 dark:border-rose-900/40">
+                      Módulo 3
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
+                    Impuestos & Planeamiento
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${subtitleColor}`}>
+                    Cálculo mensual automatizado de IGV y Renta Régimen Especial / MYPE, y planeamiento tributario anual con escala progresiva acumulativa.
+                  </p>
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400 font-mono uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    IGV Justo Prorrogable Activo
+                  </div>
+                </button>
+
+                {/* TARJETA 4: Simulador Financiero */}
+                <button
+                  type="button"
+                  onClick={() => setModuloActivo('simulador')}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-purple-500/50 hover:shadow-lg hover:scale-[1.01]`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-950/50 flex items-center justify-center text-2xl shadow-xs">
+                      💡
+                    </div>
+                    <span className="text-[10px] font-black tracking-wider bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 uppercase px-2.5 py-1 rounded-full border border-purple-100 dark:border-purple-900/40">
+                      Módulo 4
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
+                    Simulador Financiero
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${subtitleColor}`}>
+                    Toma decisiones de negocio y observa su impacto financiero en tiempo real sobre tu balance de situación y semáforo de solvencia.
+                  </p>
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-purple-600 dark:text-purple-400 font-mono uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    PCGE Consulta Integrada
+                  </div>
+                </button>
               </div>
             </div>
-
-          </div>
-
-          {/* VISUAL NAVIGATION HUB - ESPECIAL PARA LECTURA FÁCIL */}
-          <div className={`p-6 rounded-3xl border transition-colors duration-300 space-y-4 ${cardBg}`}>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🧭</span>
-                <h2 className={`text-xs font-black uppercase tracking-wider font-heading ${mainTitleColor}`}>
-                  Tablero de Acceso Visual Rápido (Imágenes Ilustradas)
-                </h2>
+          ) : (
+            /* SUB-VIEW HEADER CON BOTÓN VOLVER */
+            <div className="flex items-center justify-between p-4.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200/50 dark:border-slate-800 rounded-3xl animate-fadeIn">
+              <button
+                type="button"
+                onClick={() => setModuloActivo('menu')}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-black uppercase tracking-wider bg-white hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-2xl transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700 hover:scale-[1.01]"
+              >
+                ⬅️ Volver al Menú Principal
+              </button>
+              <div className="text-right">
+                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 block uppercase tracking-wider">MÓDULO DE TRABAJO</span>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest font-heading">
+                  {moduloActivo === 'cronograma' && '📅 Calendario & Alertas'}
+                  {moduloActivo === 'libros' && '📖 Libros Electrónicos (SIRE)'}
+                  {moduloActivo === 'impuestos' && '⚖️ Impuestos & Planeamiento'}
+                  {moduloActivo === 'simulador' && '💡 Simulador Financiero'}
+                  {moduloActivo === 'configuracion' && '⚙️ Configuración Empresa'}
+                </span>
               </div>
-              <p className={`text-[11px] leading-relaxed ${subtitleColor}`}>
-                Toca cualquiera de las fotos grandes de abajo para ir directamente a esa sección. ¡Perfecto para personas que prefieren guiarse con imágenes o símbolos sin necesidad de leer!
-              </p>
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-3">
-              {/* Card 1: Operaciones (Ventas y Compras) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('transacciones');
-                  setSelectedDiarioTab('diario');
-                }}
-                className={`flex flex-col rounded-2xl border-3 transition-all duration-300 overflow-hidden text-left hover:scale-[1.02] cursor-pointer ${
-                  activeView === 'transacciones'
-                    ? 'border-blue-500 shadow-md ring-3 ring-blue-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-blue-400'
-                }`}
-              >
-                <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={imgOperaciones}
-                    alt="Tienda, dinero y caja"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-1 left-1 bg-blue-600 text-white font-bold text-[8px] px-1.5 py-0.2 rounded shadow-md uppercase">
-                    Ventas y Gastos
-                  </div>
-                </div>
-                <div className={`p-2 text-[10px] font-bold leading-tight flex items-center gap-1.5 ${
-                  activeView === 'transacciones' ? 'bg-blue-600 text-white' : darkMode ? 'bg-slate-850 text-slate-100' : 'bg-slate-50 text-slate-850'
-                }`}>
-                  <span>💰</span>
-                  <span>1. Registro</span>
-                </div>
-              </button>
-
-              {/* Card 2: Lista de Productos */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('catalogo');
-                  setSelectedDiarioTab('catalogo');
-                }}
-                className={`flex flex-col rounded-2xl border-3 transition-all duration-300 overflow-hidden text-left hover:scale-[1.02] cursor-pointer ${
-                  activeView === 'catalogo'
-                    ? 'border-orange-500 shadow-md ring-3 ring-orange-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-orange-400'
-                }`}
-              >
-                <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={imgProductos}
-                    alt="Cajas de productos"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-1 left-1 bg-orange-500 text-white font-bold text-[8px] px-1.5 py-0.2 rounded shadow-md uppercase">
-                    Productos
-                  </div>
-                </div>
-                <div className={`p-2 text-[10px] font-bold leading-tight flex items-center gap-1.5 ${
-                  activeView === 'catalogo' ? 'bg-orange-500 text-white' : darkMode ? 'bg-slate-850 text-slate-100' : 'bg-slate-50 text-slate-850'
-                }`}>
-                  <span>📦</span>
-                  <span>2. Productos</span>
-                </div>
-              </button>
-
-              {/* Card 3: Libros Contables */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('libros');
-                  setSelectedDiarioTab('diario');
-                }}
-                className={`flex flex-col rounded-2xl border-3 transition-all duration-300 overflow-hidden text-left hover:scale-[1.02] cursor-pointer ${
-                  activeView === 'libros'
-                    ? 'border-slate-900 dark:border-slate-400 shadow-md ring-3 ring-slate-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-600'
-                }`}
-              >
-                <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={imgLibros}
-                    alt="Libros contables"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-1 left-1 bg-slate-800 text-white font-bold text-[8px] px-1.5 py-0.2 rounded shadow-md uppercase">
-                    Libros SUNAT
-                  </div>
-                </div>
-                <div className={`p-2 text-[10px] font-bold leading-tight flex items-center gap-1.5 ${
-                  activeView === 'libros' ? 'bg-slate-800 text-white' : darkMode ? 'bg-slate-850 text-slate-100' : 'bg-slate-50 text-slate-850'
-                }`}>
-                  <span>📖</span>
-                  <span>3. Libros</span>
-                </div>
-              </button>
-
-              {/* Card 4: Cálculo de Impuestos */}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('sunat');
-                }}
-                className={`flex flex-col rounded-2xl border-3 transition-all duration-300 overflow-hidden text-left hover:scale-[1.02] cursor-pointer ${
-                  activeView === 'sunat'
-                    ? 'border-red-500 shadow-md ring-3 ring-red-500/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-red-400'
-                }`}
-              >
-                <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
-                  <img
-                    src={imgImpuestos}
-                    alt="Calculadora de impuestos"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-1 left-1 bg-red-600 text-white font-bold text-[8px] px-1.5 py-0.2 rounded shadow-md uppercase">
-                    SUNAT RMT
-                  </div>
-                </div>
-                <div className={`p-2 text-[10px] font-bold leading-tight flex items-center gap-1.5 ${
-                  activeView === 'sunat' ? 'bg-red-600 text-white' : darkMode ? 'bg-slate-850 text-slate-100' : 'bg-slate-50 text-slate-850'
-                }`}>
-                  <span>⚖️</span>
-                  <span>4. Impuestos</span>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          <div className={`transition-colors duration-300 rounded-3xl p-6 border shadow-xs space-y-5 ${cardBg}`}>
-            {/* QUICK ACTIONS ROW FOR EVERYDAY USERS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveModal('VENTA');
-                  setMTipoComprobante('Factura');
-                  setMSerieNumero(`F001-${Math.floor(Math.random() * 90000) + 10000}`);
-                  setMPrecioUnitario('1200');
-                  setMGlosa('');
-                  setMRuc('20110000101');
-                  setMClienteProveedor('Inversiones Unidas SAC');
-                  setMCatalogItem('Mercadería Comercial Lote A');
-                  setMCondicionOperacion('Contado');
-                  setMFormaPago('Transferencia');
-                  setMCuentaDinero('1041');
-                }}
-                className="bg-emerald-50/60 hover:bg-emerald-50 hover:border-emerald-300 border border-emerald-100/80 text-slate-900 rounded-2xl p-4 text-left transition-all hover:scale-[1.01] hover:shadow-sm cursor-pointer flex flex-col justify-between h-28 group"
-              >
-                <div className="flex justify-between items-center w-full">
-                  <div className="bg-emerald-500 text-white w-8 h-8 rounded-xl flex items-center justify-center text-sm shadow-xs shadow-emerald-500/10 font-bold">🟢</div>
-                  <span className="text-[9px] bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">PASO 1</span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-heading text-emerald-950">Registrar Venta</h4>
-                  <p className="text-[9.5px] text-emerald-700 font-sans mt-0.5">Anota lo que cobraste o fiaste</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveModal('COMPRA');
-                  setMTipoComprobante('Factura');
-                  setMSerieNumero(`FT01-${Math.floor(Math.random() * 90000) + 10000}`);
-                  setMPrecioUnitario('600');
-                  setMGlosa('');
-                  setMRuc('20459876543');
-                  setMClienteProveedor('Distribuidora El Sol SRL');
-                  setMCatalogItem('Honorarios del Contador Externo');
-                  setMCondicionOperacion('Contado');
-                  setMFormaPago('Transferencia');
-                  setMCuentaDinero('1041');
-                }}
-                className="bg-indigo-50/60 hover:bg-indigo-50 hover:border-indigo-300 border border-indigo-100/80 text-slate-900 rounded-2xl p-4 text-left transition-all hover:scale-[1.01] hover:shadow-sm cursor-pointer flex flex-col justify-between h-28 group"
-              >
-                <div className="flex justify-between items-center w-full">
-                  <div className="bg-indigo-600 text-white w-8 h-8 rounded-xl flex items-center justify-center text-sm shadow-xs shadow-indigo-600/10 font-bold">🔵</div>
-                  <span className="text-[9px] bg-indigo-100 text-indigo-800 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">PASO 2</span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-heading text-indigo-950">Registrar Compra / Gasto</h4>
-                  <p className="text-[9.5px] text-indigo-700 font-sans mt-0.5">Tus mercaderías, recibos o servicios</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('libros');
-                  setSelectedDiarioTab('balance');
-                }}
-                className="bg-amber-50/60 hover:bg-amber-50 hover:border-amber-300 border border-amber-100/80 text-slate-900 rounded-2xl p-4 text-left transition-all hover:scale-[1.01] hover:shadow-sm cursor-pointer flex flex-col justify-between h-28 group"
-              >
-                <div className="flex justify-between items-center w-full">
-                  <div className="bg-amber-500 text-white w-8 h-8 rounded-xl flex items-center justify-center text-sm shadow-xs shadow-amber-500/10 font-bold">⚖️</div>
-                  <span className="text-[9px] bg-amber-100 text-amber-800 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">PASO 3</span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-heading text-amber-950">Ver mi Balance</h4>
-                  <p className="text-[9.5px] text-amber-700 font-sans mt-0.5">El semáforo de salud de tu negocio</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView('sunat');
-                }}
-                className="bg-purple-50/60 hover:bg-purple-50 hover:border-purple-300 border border-purple-100/80 text-slate-900 rounded-2xl p-4 text-left transition-all hover:scale-[1.01] hover:shadow-sm cursor-pointer flex flex-col justify-between h-28 group"
-              >
-                <div className="flex justify-between items-center w-full">
-                  <div className="bg-purple-500 text-white w-8 h-8 rounded-xl flex items-center justify-center text-sm shadow-xs shadow-purple-500/10 font-bold">🏛️</div>
-                  <span className="text-[9px] bg-purple-100 text-purple-800 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">PASO 4</span>
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-heading text-purple-950">Declarar Impuestos</h4>
-                  <p className="text-[9.5px] text-purple-700 font-sans mt-0.5">Saber cuánto toca pagar a SUNAT</p>
-                </div>
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* REGIMEN LIMIT WARNING */}
           {(() => {
@@ -2960,8 +2856,8 @@ export default function App() {
           )}
           
           {/* SUNAT RUC & DEADLINE - BENTO BOX 1 */}
-          {activeView === 'sunat' && (
-            <div id="ruc-setup-box" className={`lg:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
+          {moduloActivo === 'cronograma' && (
+            <div id="ruc-setup-box" className={`col-span-12 max-w-xl mx-auto w-full ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
               <div>
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -3011,8 +2907,8 @@ export default function App() {
           )}
 
           {/* DASHBOARD RESUMEN DE LIQUIDACIÓN - BENTO BOX 2 */}
-          {activeView === 'sunat' && (
-            <div id="liquidation-summary-box" className="lg:col-span-8 bg-indigo-600 rounded-3xl p-6 text-white flex flex-col justify-between shadow-md animate-fadeIn">
+          {moduloActivo === 'impuestos' && (
+            <div id="liquidation-summary-box" className="col-span-12 xl:col-span-5 bg-indigo-600 rounded-3xl p-6 text-white flex flex-col justify-between shadow-md animate-fadeIn">
               <div className="space-y-4">
                 <div className="flex justify-between items-start">
                   <div>
@@ -3123,8 +3019,8 @@ export default function App() {
             </div>
           )}
 
-          {activeView === 'sunat' && regimen === 'RMT' && (
-            <div className={`lg:col-span-12 ${cardBg} rounded-3xl p-6 border animate-fadeIn space-y-6`}>
+          {moduloActivo === 'impuestos' && regimen === 'RMT' && (
+            <div className={`col-span-12 xl:col-span-7 ${cardBg} rounded-3xl p-6 border animate-fadeIn space-y-6`}>
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <div className="flex items-center gap-2">
@@ -3301,8 +3197,8 @@ export default function App() {
           )}
 
           {/* QUICK PRESETS PLAN DE CUENTAS MYPE - BENTO BOX 3 */}
-          {activeView === 'libros' && (
-            <div id="pcge-snippet-box" className={`lg:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
+          {moduloActivo === 'simulador' && (
+            <div id="pcge-snippet-box" className={`col-span-12 xl:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <div>
@@ -3378,8 +3274,8 @@ export default function App() {
           )}
 
             {/* TREASURY & OPERATIONS CENTER - Bento Box 5 */}
-            {activeView === 'transacciones' && (
-              <div id="new-asiento-box" className={`lg:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
+            {moduloActivo === 'libros' && (
+              <div id="new-asiento-box" className={`col-span-12 xl:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
                 <div>
                   <div className="flex justify-between items-start mb-2">
                     <div>
@@ -3545,8 +3441,8 @@ export default function App() {
             )}
 
             {/* LIBRO DIARIO GENERAL & PARTIDA DOBLE TABS - Bento Box 6 */}
-            {(activeView === 'transacciones' || activeView === 'libros') && (
-              <div id="libro-diario-box" className={`lg:col-span-8 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
+            {moduloActivo === 'libros' && (
+              <div id="libro-diario-box" className={`col-span-12 xl:col-span-8 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
               <div>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                   <div>

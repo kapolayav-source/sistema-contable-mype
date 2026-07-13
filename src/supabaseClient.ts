@@ -4,8 +4,11 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://uohxujclznpmkwlmuudc.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publistable_Uf6154ktGM67A4Q3bxodAw_d5X00NX5';
 
-// Validate key presence
-export const isSupabaseConfigured = supabaseUrl.trim() !== '' && supabaseAnonKey.trim() !== '';
+// Validate key presence (exclude placeholder key starting with sb_publistable)
+export const isSupabaseConfigured = 
+  supabaseUrl.trim() !== '' && 
+  supabaseAnonKey.trim() !== '' && 
+  !supabaseAnonKey.startsWith('sb_publistable');
 
 // Create the Supabase client (or null if not configured)
 export const supabase = isSupabaseConfigured

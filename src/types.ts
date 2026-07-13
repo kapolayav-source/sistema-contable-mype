@@ -18,6 +18,7 @@ export interface Transaction {
   rucClienteProveedor: string;
   documento: string; // e.g. "F001-000412" or "PLAN-06/2026"
   creadoPor?: string; // tracks which user/role created it
+  creadoPorNombre?: string; // tracks name of user who created it
   sujetoDetraccion?: boolean;
   tasaDetraccion?: number; // e.g. 10 or 12 (percent)
   montoDetraccion?: number;

@@ -205,9 +205,9 @@ export async function registerUserCloud(user: SimulatedUser): Promise<boolean> {
           ruc: user.ruc,
           usuario: user.usuarioSol.toUpperCase(),
           contrasena: user.contrasenaSol,
-          rol: 'GERENTE',
+          rol: user.role,
           nombre_completo: user.fullName,
-          estado: 'PENDIENTE'
+          estado: user.estado || (user.role === 'GERENTE' ? 'PENDIENTE' : 'ACTIVO')
         });
 
       if (insertError) throw insertError;

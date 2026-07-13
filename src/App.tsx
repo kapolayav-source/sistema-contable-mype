@@ -56,6 +56,77 @@ const MOCK_CATALOG = [
   { id: '11', desc: 'Laptop Corporativa Core i5', precio: 3200, tipo: 'VENTA', isPhysical: true, sku: 'MER-003', unidad: 'Equipos', stockInicial: 8, costoInicial: 2100 }
 ];
 
+export function KhipuRevLogo({ className = "w-14 h-14" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 120 120" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        {/* Gradients */}
+        <linearGradient id="pillarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#0a192f" />
+          <stop offset="100%" stopColor="#172a45" />
+        </linearGradient>
+        <linearGradient id="swoopGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#00b4d8" />
+          <stop offset="30%" stopColor="#0077b6" />
+          <stop offset="70%" stopColor="#3a0ca3" />
+          <stop offset="100%" stopColor="#7209b7" />
+        </linearGradient>
+        <linearGradient id="barTeal" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stopColor="#0d9488" />
+          <stop offset="100%" stopColor="#2dd4bf" />
+        </linearGradient>
+        <linearGradient id="barBlue" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stopColor="#2563eb" />
+          <stop offset="100%" stopColor="#60a5fa" />
+        </linearGradient>
+        <linearGradient id="barPurple" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stopColor="#7c3aed" />
+          <stop offset="100%" stopColor="#c084fc" />
+        </linearGradient>
+      </defs>
+
+      {/* Behind: Growing chart bars with upward arrow */}
+      <rect x="64" y="38" width="6.5" height="22" rx="3" fill="url(#barTeal)" />
+      <rect x="74" y="26" width="6.5" height="34" rx="3" fill="url(#barBlue)" />
+      <rect x="84" y="16" width="6.5" height="44" rx="3" fill="url(#barPurple)" />
+
+      {/* Upward sweeping arrow curve */}
+      <path d="M54 62 C70 62 90 54 91 26" stroke="#00b4d8" strokeWidth="4.5" strokeLinecap="round" fill="none" />
+      <path d="M85 32 L91 26 L97 33" stroke="#00b4d8" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+
+      {/* Left Main Pillar */}
+      <rect x="26" y="15" width="13" height="60" rx="6.5" fill="url(#pillarGrad)" />
+
+      {/* 3D Swoop/Ribbon component making the K's diagonal branches */}
+      <path d="M26 42 C36 42 45 28 65 28 C80 28 85 45 68 55 L45 75" stroke="url(#swoopGrad)" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+
+      {/* Abacus under the loop on the left */}
+      {/* Abacus frame top horizontal bar */}
+      <line x1="31" y1="46" x2="52" y2="46" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" />
+      {/* 3 vertical rods */}
+      <line x1="34" y1="46" x2="34" y2="78" stroke="#0d9488" strokeWidth="1.5" />
+      <line x1="41" y1="46" x2="41" y2="78" stroke="#2563eb" strokeWidth="1.5" />
+      <line x1="48" y1="46" x2="48" y2="78" stroke="#7c3aed" strokeWidth="1.5" />
+
+      {/* Beads */}
+      {/* Beads on Rod 1 (Teal) */}
+      <circle cx="34" cy="54" r="2.8" fill="#2dd4bf" />
+      <circle cx="34" cy="61" r="2.8" fill="#2dd4bf" />
+      <circle cx="34" cy="68" r="2.8" fill="#2dd4bf" />
+
+      {/* Beads on Rod 2 (Blue) */}
+      <circle cx="41" cy="57" r="2.8" fill="#60a5fa" />
+      <circle cx="41" cy="64" r="2.8" fill="#60a5fa" />
+      <circle cx="41" cy="71" r="2.8" fill="#60a5fa" />
+
+      {/* Beads on Rod 3 (Purple) */}
+      <circle cx="48" cy="52" r="2.8" fill="#c084fc" />
+      <circle cx="48" cy="59" r="2.8" fill="#c084fc" />
+      <circle cx="48" cy="66" r="2.8" fill="#c084fc" />
+    </svg>
+  );
+}
+
 export default function App() {
   // --- States ---
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
@@ -1649,11 +1720,11 @@ export default function App() {
           {/* Top minimal header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-emerald-500 w-10 h-10 rounded-xl flex items-center justify-center text-white text-lg shadow-md shadow-emerald-500/15">
-                🇵🇪
+              <div className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900 shadow-md">
+                <KhipuRevLogo className="w-10 h-10" />
               </div>
               <div>
-                <h1 className={`text-xl font-bold tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Planificador MYPE Contable</h1>
+                <h1 className={`text-xl font-extrabold tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Kipurev</h1>
                 <p className={`text-xs font-medium font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Acceso Seguro Clave SOL / Sandbox Simulación</p>
               </div>
             </div>
@@ -2085,18 +2156,18 @@ export default function App() {
           
           {/* LOGO & BRAND CARD */}
           <div className={`p-5 rounded-3xl border transition-colors duration-300 flex flex-col items-center text-center gap-3 ${cardBg}`}>
-            <div className="bg-emerald-500 w-14 h-14 rounded-2xl flex items-center justify-center text-white text-3xl shadow-lg shadow-emerald-500/20">
-              🇵🇪
+            <div className="w-16 h-16 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900 shadow-md">
+              <KhipuRevLogo className="w-14 h-14" />
             </div>
             <div>
               <div className="flex items-center justify-center gap-1.5">
-                <h1 className={`text-sm font-black tracking-tight font-heading ${mainTitleColor}`}>Planificador MYPE</h1>
-                <span className="bg-emerald-50 text-emerald-700 text-[8px] font-black tracking-wider uppercase px-2 py-0.5 rounded-full border border-emerald-100">
+                <h1 className={`text-sm font-extrabold tracking-tight font-heading ${mainTitleColor}`}>Kipurev</h1>
+                <span className="bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 text-[8px] font-black tracking-wider uppercase px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-900">
                   RMT Perú
                 </span>
               </div>
               <p className={`text-[11px] mt-1 ${subtitleColor}`}>
-                Partida doble, libros contables, Kárdex, Liquidación IGV/Renta y Asistente con IA
+                Partida doble, libros contables, Kárdex y Liquidación IGV/Renta
               </p>
             </div>
           </div>

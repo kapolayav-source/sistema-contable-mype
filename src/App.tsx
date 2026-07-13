@@ -206,14 +206,44 @@ export default function App() {
   const [mEstadoInterno, setMEstadoInterno] = useState<string>('Registrado');
   const [mObservaciones, setMObservaciones] = useState<string>('');
   
-  // Tax regime selector
-  const [regimen, setRegimen] = useState<'RER' | 'RMT'>(() => {
+  // Tax regime (Fixed to Régimen MYPE Tributario)
+  const [regimen] = useState<'RER' | 'RMT'>('RMT');
+
+  // --- Real-Time Simulation States ---
+  const [isRealTimeSimulating, setIsRealTimeSimulating] = useState<boolean>(() => {
     try {
-      return (localStorage.getItem('mype_regimen') as 'RER' | 'RMT') || 'RMT';
+      return localStorage.getItem('mype_live_simulating') === 'true';
     } catch {
-      return 'RMT';
+      return false;
     }
   });
+
+  const [realTimeFeed, setRealTimeFeed] = useState<{
+    id: string;
+    time: string;
+    usuario: string;
+    role: string;
+    tipo: 'VENTA' | 'COMPRA';
+    monto: number;
+    documento: string;
+    descripcion: string;
+  }[]>(() => {
+    try {
+      const saved = localStorage.getItem('mype_live_feed');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [activeToast, setActiveToast] = useState<{
+    id: string;
+    title: string;
+    message: string;
+    role: string;
+    amount: number;
+    tipo: 'VENTA' | 'COMPRA';
+  } | null>(null);
 
   // Detracción and Retención options
   const [sujetoDetraccion, setSujetoDetraccion] = useState<boolean>(false);
@@ -332,6 +362,157 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('mype_modo_sencillo', String(modoSencillo));
   }, [modoSencillo]);
+
+  useEffect(() => {
+    localStorage.setItem('mype_live_simulating', String(isRealTimeSimulating));
+  }, [isRealTimeSimulating]);
+
+  useEffect(() => {
+    localStorage.setItem('mype_live_feed', JSON.stringify(realTimeFeed));
+  }, [realTimeFeed]);
+
+  // Toast notification auto-dismissal
+  useEffect(() => {
+    if (activeToast) {
+      const timer = setTimeout(() => {
+        setActiveToast(null);
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeToast]);
+
+  // Simulator core function
+  const triggerSimulatedTransaction = () => {
+    // 1. Pick a random registered user of current RUC or fallback to some employee names
+    const currentRuc = ruc || '20601234567';
+    const rucUsers = getRegisteredUsers().filter(u => u.ruc === currentRuc);
+    const nonGerenteUsers = rucUsers.filter(u => u.role !== 'GERENTE');
+    
+    let simulatedWorker = {
+      fullName: 'Juan Quispe (Asistente de Ventas)',
+      role: 'EMPLEADO',
+      usuarioSol: 'EMPLEADO_MYPE'
+    };
+    
+    if (nonGerenteUsers.length > 0) {
+      const randUser = nonGerenteUsers[Math.floor(Math.random() * nonGerenteUsers.length)];
+      simulatedWorker = {
+        fullName: randUser.fullName,
+        role: randUser.role,
+        usuarioSol: randUser.usuarioSol
+      };
+    } else {
+      const templates = [
+        { fullName: 'Juan Quispe (Asistente de Ventas)', role: 'EMPLEADO', usuarioSol: 'JUAN_VENTAS' },
+        { fullName: 'Ana Torres (Administradora)', role: 'ADMINISTRADOR', usuarioSol: 'ANA_ADMIN' },
+        { fullName: 'Sofía Ramirez (Cajera MYPE)', role: 'EMPLEADO', usuarioSol: 'SOFIA_CAJA' },
+        { fullName: 'Esteban Delgado (Contador Externo)', role: 'CONTADOR', usuarioSol: 'ESTEBAN_CONTADOR' }
+      ];
+      simulatedWorker = templates[Math.floor(Math.random() * templates.length)];
+    }
+
+    // 2. Select a random Catalog Item
+    const currentCatalog = catalogItems.length > 0 ? catalogItems : MOCK_CATALOG;
+    const randItem = currentCatalog[Math.floor(Math.random() * currentCatalog.length)];
+
+    // 3. Determine transaction type (VENTA or COMPRA)
+    const isVenta = randItem.tipo === 'VENTA' || Math.random() > 0.4;
+    const tipo: 'VENTA' | 'COMPRA' = isVenta ? 'VENTA' : 'COMPRA';
+
+    // 4. Generate random quantities and amounts
+    const cantidad = randItem.isPhysical ? Math.floor(1 + Math.random() * 8) : 1;
+    const precioUnitario = randItem.precio || 500;
+    const baseMonto = precioUnitario * cantidad;
+    
+    const igv = Math.round(baseMonto * 0.18 * 100) / 100;
+    const total = baseMonto + igv;
+
+    // Sequential serial/number simulation
+    const serial = isVenta ? 'F001' : 'E001';
+    const docNum = Math.floor(100 + Math.random() * 899);
+    const documento = `${serial}-${String(docNum).padStart(8, '0')}`;
+
+    // Get current date formatted
+    const today = new Date().toISOString().split('T')[0];
+
+    // Dummy RUCs for client/provider
+    const rucsPeruanos = ['20100100101', '20501294812', '20491823901', '10467812349', '20601122334', '10023456789'];
+    const rucClienteProveedor = rucsPeruanos[Math.floor(Math.random() * rucsPeruanos.length)];
+
+    const glosa = isVenta 
+      ? `Venta de ${randItem.desc} por ${simulatedWorker.fullName.split(' ')[0]}`
+      : `Adquisición de ${randItem.desc} para operaciones por ${simulatedWorker.fullName.split(' ')[0]}`;
+
+    // Create New Transaction Object
+    const newTx: Transaction = {
+      id: 'tx_sim_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      fecha: today,
+      tipo,
+      montoBase: baseMonto,
+      igv,
+      total,
+      glosa,
+      rucClienteProveedor,
+      documento,
+      creadoPor: simulatedWorker.role as any,
+      formaPago: 'Efectivo',
+      cuentaOrigen: isVenta ? '1212' : '4212',
+      cuentaDestino: isVenta ? '1041' : '101',
+      catalogItemId: randItem.id,
+      cantidad,
+      precioUnitario,
+      esMovimientoInventario: randItem.isPhysical,
+      tipoInventario: isVenta ? 'SALIDA' : 'INGRESO'
+    };
+
+    // Save
+    setTransactions(prev => [newTx, ...prev]);
+
+    // Add to live feed state
+    const timestamp = new Date().toLocaleTimeString('es-PE', { hour12: false });
+    const feedItem = {
+      id: 'feed_' + Date.now(),
+      time: timestamp,
+      usuario: simulatedWorker.fullName,
+      role: simulatedWorker.role,
+      tipo,
+      monto: total,
+      documento,
+      descripcion: glosa
+    };
+
+    setRealTimeFeed(prev => [feedItem, ...prev].slice(0, 15)); // Keep last 15 items
+    
+    // Show temporary visual Toast
+    setActiveToast({
+      id: feedItem.id,
+      title: `${feedItem.role === 'EMPLEADO' ? '💼' : feedItem.role === 'ADMINISTRADOR' ? '🔧' : '🧮'} Actividad de ${feedItem.usuario.split(' ')[0]}`,
+      message: feedItem.descripcion,
+      role: feedItem.role,
+      amount: feedItem.monto,
+      tipo: feedItem.tipo
+    });
+  };
+
+  // Background timer interval for simulation
+  useEffect(() => {
+    if (!isRealTimeSimulating) return;
+
+    // Trigger one almost immediately (2s)
+    const initialTimer = setTimeout(() => {
+      triggerSimulatedTransaction();
+    }, 2000);
+
+    // Then trigger every 14 seconds
+    const interval = setInterval(() => {
+      triggerSimulatedTransaction();
+    }, 14000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [isRealTimeSimulating, catalogItems, ruc]);
 
   useEffect(() => {
     if (chatBottomRef.current) {
@@ -1898,55 +2079,82 @@ export default function App() {
             </button>
           </div>
 
-          {/* DYNAMIC REGIMEN CONTABLE ACTIVE SWITCHER */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-            <span className="text-[9px] font-black text-indigo-600 uppercase tracking-wider block">Régimen Contable Activo</span>
-            <div className="bg-slate-50 p-1 rounded-2xl flex flex-col gap-1 border border-slate-200/60">
+          {/* SIMULADOR EN TIEMPO REAL - MYPE LIVE FEED */}
+          <div className={`${cardBg} p-5 rounded-3xl space-y-3.5`}>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  {isRealTimeSimulating && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRealTimeSimulating ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">MYPE en Tiempo Real</span>
+              </div>
               <button 
-                onClick={() => {
-                  setRegimen('RER');
-                  localStorage.setItem('mype_regimen', 'RER');
-                }}
-                className={`w-full text-left text-[10.5px] font-black px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-between ${
-                  regimen === 'RER' 
-                    ? 'bg-white text-amber-800 shadow-xs border border-amber-200/80' 
-                    : 'text-slate-500 hover:text-slate-700'
+                onClick={() => setIsRealTimeSimulating(prev => !prev)}
+                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isRealTimeSimulating ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
                 }`}
+                title="Alternar Simulación en Tiempo Real"
               >
-                <span>Régimen Especial (RER)</span>
-                {regimen === 'RER' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>}
-              </button>
-              <button 
-                onClick={() => {
-                  setRegimen('RMT');
-                  localStorage.setItem('mype_regimen', 'RMT');
-                }}
-                className={`w-full text-left text-[10.5px] font-black px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center justify-between ${
-                  regimen === 'RMT' 
-                    ? 'bg-white text-indigo-700 shadow-xs border border-indigo-200/80' 
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <span>Régimen MYPE (RMT)</span>
-                {regimen === 'RMT' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    isRealTimeSimulating ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-2xl text-[10px] space-y-1 text-slate-500 border border-slate-100">
-              {regimen === 'RER' ? (
-                <>
-                  <p>• <strong>Renta:</strong> 1.5% fijo mensual.</p>
-                  <p>• <strong>Límite:</strong> S/. 525,000 anual.</p>
-                  <p>• <strong>Libros:</strong> Solo Ventas y Compras.</p>
-                </>
+            <div className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {isRealTimeSimulating ? (
+                <p>🟢 <strong>Monitoreo Activo:</strong> Tus colaboradores registrados (Asistente, Administradora, Cajera) están ingresando compras y ventas en vivo. Toda la información de balances e impuestos se actualiza al instante.</p>
               ) : (
-                <>
-                  <p>• <strong>Renta:</strong> Progresivo (1% a 1.5%).</p>
-                  <p>• <strong>Límite:</strong> Hasta 1700 UIT anual.</p>
-                  <p>• <strong>Libros:</strong> Ventas, Compras, Diario, Mayor y Balances.</p>
-                </>
+                <p>⚪ <strong>Pausado:</strong> Activa el monitoreo en tiempo real para simular transacciones automáticas de tus empleados y visualizar balances dinámicos.</p>
               )}
             </div>
+
+            {/* Manual simulator trigger */}
+            <button
+              type="button"
+              onClick={triggerSimulatedTransaction}
+              className={`w-full text-center text-[10px] font-black py-2 px-3 rounded-xl transition-all border cursor-pointer flex items-center justify-center gap-1.5 ${
+                darkMode ? 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-emerald-400' : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'
+              }`}
+            >
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: isRealTimeSimulating ? '3s' : '0s' }} />
+              <span>Forzar Transacción de Empleado</span>
+            </button>
+
+            {/* Ticker / Feed list */}
+            {realTimeFeed.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-dashed border-slate-250 dark:border-slate-800">
+                <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">Actividad Reciente del Personal</span>
+                <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1">
+                  {realTimeFeed.slice(0, 4).map(item => (
+                    <div key={item.id} className="text-[9.5px] p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/60 leading-normal flex flex-col gap-0.5">
+                      <div className="flex justify-between items-center text-[8px] text-slate-400">
+                        <span className="font-mono">{item.time}</span>
+                        <span className={`font-black px-1.5 py-0.2 rounded uppercase ${
+                          item.role === 'EMPLEADO' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' : 
+                          item.role === 'ADMINISTRADOR' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400' : 
+                          'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                        }`}>
+                          {item.role === 'EMPLEADO' ? 'Emp' : item.role === 'ADMINISTRADOR' ? 'Adm' : 'Cont'}
+                        </span>
+                      </div>
+                      <span className="font-bold text-slate-700 dark:text-slate-200 block truncate">{item.usuario.split(' ')[0]}: {item.descripcion}</span>
+                      <div className="flex justify-between items-center mt-1">
+                        <span className="font-mono text-slate-400">{item.documento}</span>
+                        <span className={`font-bold font-mono ${item.tipo === 'VENTA' ? 'text-blue-600 dark:text-blue-400' : 'text-red-500 dark:text-red-400'}`}>
+                          {item.tipo === 'VENTA' ? '+' : '-'}S/. {item.monto.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* CONFIGURACIÓN MYPE TRAMO DE INGRESOS (UIT) */}
@@ -2481,19 +2689,19 @@ export default function App() {
           
           {/* SUNAT RUC & DEADLINE - BENTO BOX 1 */}
           {activeView === 'sunat' && (
-            <div id="ruc-setup-box" className="lg:col-span-4 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between animate-fadeIn">
+            <div id="ruc-setup-box" className={`lg:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
               <div>
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-1">SUNAT CRONOGRAMA</span>
-                    <h2 className="text-slate-950 font-bold text-lg font-heading">Vencimiento Fiscal</h2>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-1">SUNAT CRONOGRAMA</span>
+                    <h2 className="font-bold text-lg font-heading text-slate-900 dark:text-slate-100">Vencimiento Fiscal</h2>
                   </div>
                   <Calendar className="w-5 h-5 text-emerald-500" />
                 </div>
                 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 block mb-1.5">
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 block mb-1.5">
                       Número RUC de la Empresa:
                     </label>
                     <div className="relative">
@@ -2644,21 +2852,21 @@ export default function App() {
           )}
 
           {activeView === 'sunat' && regimen === 'RMT' && (
-            <div className="lg:col-span-12 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm animate-fadeIn space-y-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
+            <div className={`lg:col-span-12 ${cardBg} rounded-3xl p-6 border animate-fadeIn space-y-6`}>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-lg border border-indigo-100 uppercase tracking-wide">Planeamiento Anual</span>
-                    <span className="text-[10px] text-slate-400 font-mono">Ley MYPE Tributaria</span>
+                    <span className="text-xs bg-indigo-50 dark:bg-slate-950 text-indigo-700 dark:text-indigo-450 font-bold px-2 py-0.5 rounded-lg border border-indigo-100 dark:border-indigo-900/60 uppercase tracking-wide">Planeamiento Anual</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-550 font-mono">Ley MYPE Tributaria</span>
                   </div>
-                  <h3 className="text-slate-900 font-bold text-lg font-heading tracking-tight mt-1">📊 Proyección de Impuesto a la Renta Anual</h3>
-                  <p className="text-xs text-slate-500 max-w-3xl mt-0.5">
+                  <h3 className="font-bold text-lg font-heading tracking-tight mt-1 text-slate-900 dark:text-slate-100">📊 Proyección de Impuesto a la Renta Anual</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl mt-0.5">
                     Estima el Impuesto a la Renta Anual del ejercicio basándote en la escala progresiva acumulativa oficial de SUNAT. Modifica la utilidad proyectada para simular tu cierre anual.
                   </p>
                 </div>
-                <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 text-right shrink-0">
-                  <span className="text-[9px] font-bold text-slate-400 block uppercase">1 UIT Oficial 2026</span>
-                  <span className="font-mono font-bold text-slate-800 text-xs">S/. 5,500.00</span>
+                <div className="bg-slate-50 dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 text-right shrink-0">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-555 block uppercase">1 UIT Oficial 2026</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">S/. S/. 5,500.00</span>
                 </div>
               </div>
 
@@ -2822,14 +3030,14 @@ export default function App() {
 
           {/* QUICK PRESETS PLAN DE CUENTAS MYPE - BENTO BOX 3 */}
           {activeView === 'libros' && (
-            <div id="pcge-snippet-box" className="lg:col-span-4 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between animate-fadeIn">
+            <div id="pcge-snippet-box" className={`lg:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
               <div>
                 <div className="flex justify-between items-center mb-4">
                   <div>
-                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block mb-1">PCGE DE CONSULTA</span>
-                    <h2 className="text-slate-900 font-bold text-sm font-heading">Plan de Cuentas MYPE</h2>
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-1">PCGE DE CONSULTA</span>
+                    <h2 className="font-bold text-sm font-heading text-slate-900 dark:text-slate-100">Plan de Cuentas MYPE</h2>
                   </div>
-                  <span className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-500 font-bold uppercase font-mono">
+                  <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500 dark:text-slate-400 font-bold uppercase font-mono">
                     RMT
                   </span>
                 </div>
@@ -2899,16 +3107,16 @@ export default function App() {
 
             {/* TREASURY & OPERATIONS CENTER - Bento Box 5 */}
             {activeView === 'transacciones' && (
-              <div id="new-asiento-box" className="lg:col-span-4 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between animate-fadeIn">
+              <div id="new-asiento-box" className={`lg:col-span-4 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
                 <div>
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block mb-1">CENTRO DE OPERACIONES</span>
-                      <h2 className="text-slate-900 font-bold text-base font-heading">Gestión Operativa y Tesorería</h2>
+                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-1">CENTRO DE OPERACIONES</span>
+                      <h2 className="font-bold text-base font-heading text-slate-900 dark:text-slate-100">Gestión Operativa y Tesorería</h2>
                     </div>
                     <span className="text-lg">💼</span>
                   </div>
-                  <p className="text-xs text-slate-400 mb-4 font-sans">Haz clic en cualquier botón para abrir el formulario especializado de registro contable en tiempo real.</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-450 mb-4 font-sans">Haz clic en cualquier botón para abrir el formulario especializado de registro contable en tiempo real.</p>
 
                   <div className="space-y-2.5">
                     {/* VENTA */}
@@ -3066,12 +3274,12 @@ export default function App() {
 
             {/* LIBRO DIARIO GENERAL & PARTIDA DOBLE TABS - Bento Box 6 */}
             {(activeView === 'transacciones' || activeView === 'libros') && (
-              <div id="libro-diario-box" className="lg:col-span-8 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between animate-fadeIn">
+              <div id="libro-diario-box" className={`lg:col-span-8 ${cardBg} rounded-3xl p-6 border flex flex-col justify-between animate-fadeIn`}>
               <div>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                   <div>
-                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-1">LIBROS ELECTRÓNICOS SUNAT (SIRE)</span>
-                    <h2 className="text-slate-900 font-bold text-lg font-heading">
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-1">LIBROS ELECTRÓNICOS SUNAT (SIRE)</span>
+                    <h2 className="font-bold text-lg font-heading text-slate-900 dark:text-slate-100">
                       Libros y Registros Contables {regimen === 'RER' ? 'RER (Reg. Especial)' : 'MYPE (Reg. MYPE Tributario)'}
                     </h2>
                   </div>
@@ -5434,32 +5642,32 @@ export default function App() {
         {/* INFORMATIVE SECTION: COMPREHENSIVE RMT GUIDE - BENTO ROW */}
         {activeView === 'sunat' && (
           <div id="rmt-guide-grid" className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-3">
-            <div className="bg-emerald-50 text-emerald-700 w-10 h-10 rounded-2xl flex items-center justify-center font-bold">
+          <div className={`${cardBg} rounded-3xl p-6 border space-y-3`}>
+            <div className="bg-emerald-50 dark:bg-slate-950 text-emerald-700 dark:text-emerald-400 w-10 h-10 rounded-2xl flex items-center justify-center font-bold">
               1%
             </div>
-            <h3 className="font-heading font-bold text-base text-slate-900">Pagos a Cuenta de Renta</h3>
-            <p className="text-xs text-slate-500 leading-relaxed font-sans">
+            <h3 className="font-heading font-bold text-base text-slate-900 dark:text-slate-100">Pagos a Cuenta de Renta</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
               Si tus ingresos netos mensuales no superan las 300 UIT en el año fiscal, pagas únicamente el <strong>1.0% de tus ventas base</strong> del mes. Si excedes las 300 UIT pero no superas las 1700 UIT, la tasa del pago mensual a cuenta es del <strong>1.5%</strong>.
             </p>
           </div>
 
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-3">
-            <div className="bg-indigo-50 text-indigo-700 w-10 h-10 rounded-2xl flex items-center justify-center font-bold">
+          <div className={`${cardBg} rounded-3xl p-6 border space-y-3`}>
+            <div className="bg-indigo-50 dark:bg-slate-950 text-indigo-700 dark:text-indigo-400 w-10 h-10 rounded-2xl flex items-center justify-center font-bold">
               ⚖️
             </div>
-            <h3 className="font-heading font-bold text-base text-slate-900">Difiere con IGV Justo</h3>
-            <p className="text-xs text-slate-500 leading-relaxed font-sans">
+            <h3 className="font-heading font-bold text-base text-slate-900 dark:text-slate-100">Difiere con IGV Justo</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
               La Ley 30524 faculta a las microempresas (ventas de hasta 1700 UIT) a prorrogar hasta por <strong>3 meses o 90 días</strong> el pago efectivo del IGV de sus declaraciones mensuales, siempre que no tengan deudas tributarias firmes o socios con mal comportamiento de pago.
             </p>
           </div>
 
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-3">
-            <div className="bg-amber-50 text-amber-700 w-10 h-10 rounded-2xl flex items-center justify-center font-bold">
+          <div className={`${cardBg} rounded-3xl p-6 border space-y-3`}>
+            <div className="bg-amber-50 dark:bg-slate-950 text-amber-700 dark:text-amber-400 w-10 h-10 rounded-2xl flex items-center justify-center font-bold">
               📂
             </div>
-            <h3 className="font-heading font-bold text-base text-slate-900">SIRE de la SUNAT</h3>
-            <p className="text-xs text-slate-500 leading-relaxed font-sans">
+            <h3 className="font-heading font-bold text-base text-slate-900 dark:text-slate-100">SIRE de la SUNAT</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-sans">
               Con la masificación del Sistema Integrado de Registros Electrónicos (SIRE), la SUNAT pre-elabora tus registros de Compras y Ventas basándose en la emisión electrónica de facturas. ¡Asegura que todos tus comprobantes estén aprobados y cuadrados antes del vencimiento!
             </p>
           </div>
@@ -6201,6 +6409,37 @@ export default function App() {
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING REAL-TIME ACTIVITY TOAST POPUP */}
+      {activeToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white dark:bg-slate-900 border-2 border-indigo-500 rounded-2xl shadow-2xl p-4 animate-fadeIn flex gap-3.5 items-start">
+          <div className="bg-indigo-50 dark:bg-slate-950 p-2.5 rounded-xl border border-indigo-100 dark:border-slate-800 text-base shrink-0">
+            {activeToast.role === 'EMPLEADO' ? '💼' : activeToast.role === 'ADMINISTRADOR' ? '🔧' : '🧮'}
+          </div>
+          <div className="min-w-0 w-full">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                {activeToast.title}
+              </span>
+              <button 
+                onClick={() => setActiveToast(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold text-xs"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 mt-1 leading-normal">
+              {activeToast.message}
+            </p>
+            <div className="flex justify-between items-center mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500">MYPE en Vivo</span>
+              <span className={`text-[11px] font-black font-mono ${activeToast.tipo === 'VENTA' ? 'text-blue-600 dark:text-blue-400' : 'text-red-500 dark:text-red-400'}`}>
+                {activeToast.tipo === 'VENTA' ? '+' : '-'}S/. {activeToast.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
       )}

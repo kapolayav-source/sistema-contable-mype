@@ -43,7 +43,37 @@ export function getRegisteredUsers(): SimulatedUser[] {
   try {
     const stored = localStorage.getItem('mype_users_db');
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored) as SimulatedUser[];
+      let modified = false;
+
+      // Ensure all INITIAL_SIMULATED_USERS exist in the stored array and are up to date
+      INITIAL_SIMULATED_USERS.forEach(initial => {
+        const index = parsed.findIndex(
+          u => u.usuarioSol.toUpperCase() === initial.usuarioSol.toUpperCase()
+        );
+        if (index === -1) {
+          parsed.push(initial);
+          modified = true;
+        } else {
+          // Sync role and credentials if they differ from initial setup (to ensure correct testing)
+          if (
+            parsed[index].role !== initial.role ||
+            parsed[index].contrasenaSol !== initial.contrasenaSol ||
+            parsed[index].ruc !== initial.ruc
+          ) {
+            parsed[index].role = initial.role;
+            parsed[index].contrasenaSol = initial.contrasenaSol;
+            parsed[index].ruc = initial.ruc;
+            parsed[index].fullName = initial.fullName;
+            modified = true;
+          }
+        }
+      });
+
+      if (modified) {
+        saveUsersToStorage(parsed);
+      }
+      return parsed;
     }
   } catch (e) {
     console.error('Error reading user DB from storage', e);

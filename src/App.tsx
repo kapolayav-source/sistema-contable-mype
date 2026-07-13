@@ -33,7 +33,8 @@ import {
 import { Transaction, AccountingEntry, PCGEAccount, ChatMessage, UserRole, CompanyConfig } from './types';
 import { PCGE_MYPE, INITIAL_TRANSACTIONS, generateSeatsFromTransaction, PRESET_QUESTIONS, MONTHS_LIST, getSUNATDeadline } from './data';
 import { exportToExcel, exportToPDF } from './exportHelper';
-import { getRegisteredUsers, registerUser, deleteUser, SimulatedUser } from './usuarios';
+import { getRegisteredUsers, registerUser, deleteUser, SimulatedUser, validateUserCloud, registerUserCloud } from './usuarios';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { ConfiguracionEmpresa, DEFAULT_COMPANY_CONFIG } from './components/ConfiguracionEmpresa';
 
 import imgOperaciones from './assets/images/navegacion_operaciones_1783371809409.jpg';
@@ -100,6 +101,7 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
+  const [supabaseError, setSupabaseError] = useState<string | null>(null);
   const [loginMode, setLoginMode] = useState<'login' | 'registro'>('login');
   const [loginType, setLoginType] = useState<'gerente' | 'colaborador'>('gerente');
   const [regRuc, setRegRuc] = useState<string>('');
@@ -358,6 +360,145 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('mype_transactions', JSON.stringify(transactions));
   }, [transactions]);
+
+  // --- Supabase Transaction Sync Effects ---
+  const prevTransactionsRef = useRef<Transaction[]>([]);
+
+  // 1. Fetch transactions from Supabase on load and on a periodic 8s polling interval for real-time collaboration
+  useEffect(() => {
+    if (!ruc || !isSupabaseConfigured || !supabase) return;
+
+    const fetchTransactions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transacciones')
+          .select('*')
+          .eq('ruc_empresa', ruc)
+          .order('fecha', { ascending: false });
+
+        if (error) throw error;
+
+        setSupabaseError(null); // Clear errors on success
+
+        if (data) {
+          const mapped: Transaction[] = data.map(tx => ({
+            id: tx.id,
+            fecha: tx.fecha,
+            tipo: tx.tipo as any,
+            montoBase: Number(tx.monto_base),
+            igv: Number(tx.igv),
+            total: Number(tx.total),
+            glosa: tx.glosa || '',
+            rucClienteProveedor: tx.ruc_cliente_proveedor || '',
+            documento: tx.documento || '',
+            creadoPor: (tx.creado_por || 'EMPLEADO') as any,
+            formaPago: tx.forma_pago || 'EFECTIVO',
+            cuentaOrigen: tx.cuenta_origen || '',
+            cuentaDestino: tx.cuenta_destino || '',
+            catalogItemId: tx.catalog_item_id || undefined,
+            cantidad: tx.cantidad ? Number(tx.cantidad) : undefined,
+            precioUnitario: tx.precio_unitario ? Number(tx.precio_unitario) : undefined,
+            esMovimientoInventario: tx.es_movimiento_inventario || false,
+            tipoInventario: tx.tipo_inventario as any,
+            montoDetraccion: tx.monto_detraccion ? Number(tx.monto_detraccion) : undefined,
+            montoRetencion: tx.monto_retencion ? Number(tx.monto_retencion) : undefined,
+          }));
+
+          // Avoid updating state if the contents are identical (prevent render thrashing)
+          if (JSON.stringify(mapped) !== JSON.stringify(transactions)) {
+            setTransactions(mapped);
+            prevTransactionsRef.current = mapped;
+          }
+        }
+      } catch (err: any) {
+        console.error('Error fetching transactions from Supabase:', err);
+        setSupabaseError(err.message || 'Error de conexión o tablas faltantes en Supabase');
+      }
+    };
+
+    fetchTransactions();
+
+    const interval = setInterval(fetchTransactions, 8000);
+    return () => clearInterval(interval);
+  }, [ruc, transactions]);
+
+  // 2. Push local changes (inserts, updates, deletes) to Supabase cloud
+  useEffect(() => {
+    if (!ruc || !isSupabaseConfigured || !supabase) return;
+
+    const syncToSupabase = async () => {
+      // Find transactions that are new or have changed
+      const changed = transactions.filter(tx => {
+        const prev = prevTransactionsRef.current.find(p => p.id === tx.id);
+        if (!prev) return true; // New transaction
+        return JSON.stringify(prev) !== JSON.stringify(tx); // Modified transaction
+      });
+
+      if (changed.length === 0) {
+        // Check for deletions
+        const deletedIds = prevTransactionsRef.current
+          .filter(p => !transactions.some(t => t.id === p.id))
+          .map(p => p.id);
+
+        if (deletedIds.length > 0) {
+          try {
+            const { error } = await supabase
+              .from('transacciones')
+              .delete()
+              .in('id', deletedIds);
+            if (error) throw error;
+            setSupabaseError(null);
+          } catch (err: any) {
+            console.error('Error deleting transactions from Supabase:', err);
+            setSupabaseError(err.message || 'Error al eliminar fila en Supabase');
+          }
+        }
+        prevTransactionsRef.current = transactions;
+        return;
+      }
+
+      // Upsert modified or new transactions
+      try {
+        const rows = changed.map(tx => ({
+          id: tx.id,
+          ruc_empresa: ruc,
+          fecha: tx.fecha,
+          tipo: tx.tipo,
+          monto_base: tx.montoBase,
+          igv: tx.igv,
+          total: tx.total,
+          glosa: tx.glosa,
+          ruc_cliente_proveedor: tx.rucClienteProveedor,
+          documento: tx.documento,
+          creado_por: tx.creadoPor,
+          forma_pago: tx.formaPago,
+          cuenta_origen: tx.cuentaOrigen,
+          cuenta_destino: tx.cuentaDestino,
+          catalog_item_id: tx.catalogItemId,
+          cantidad: tx.cantidad,
+          precio_unitario: tx.precioUnitario,
+          es_movimiento_inventario: tx.esMovimientoInventario,
+          tipo_inventario: tx.tipoInventario,
+          monto_detraccion: tx.montoDetraccion,
+          monto_retencion: tx.montoRetencion
+        }));
+
+        const { error } = await supabase
+          .from('transacciones')
+          .upsert(rows);
+
+        if (error) throw error;
+        setSupabaseError(null);
+      } catch (err: any) {
+        console.error('Error syncing transactions to Supabase:', err);
+        setSupabaseError(err.message || 'Error de sincronización con Supabase (Verifica que creaste las tablas)');
+      }
+
+      prevTransactionsRef.current = transactions;
+    };
+
+    syncToSupabase();
+  }, [transactions, ruc]);
 
   useEffect(() => {
     localStorage.setItem('mype_modo_sencillo', String(modoSencillo));
@@ -718,7 +859,7 @@ export default function App() {
   const deadlineInfo = getSUNATDeadline(rucLastDigit, period);
 
   // --- Handlers ---
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
     setRegSuccess('');
@@ -762,7 +903,7 @@ export default function App() {
       fullName: `${cleanNombreGerente} (Gerente General)`
     };
 
-    const registered = registerUser(newUser);
+    const registered = await registerUserCloud(newUser);
     if (!registered) {
       setRegError('Este Usuario SOL ya se encuentra registrado para este RUC.');
       return;
@@ -779,6 +920,23 @@ export default function App() {
     };
     localStorage.setItem('mype_company_config_' + cleanRuc, JSON.stringify(newConfig));
     localStorage.setItem('mype_company_name_' + cleanRuc, cleanRazonSocial);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('configuracion_empresa')
+          .upsert({
+            ruc: cleanRuc,
+            razon_social: cleanRazonSocial,
+            direccion: newConfig.direccion,
+            telefono: newConfig.telefono,
+            correo: newConfig.correo,
+            representante_legal: newConfig.representanteLegal
+          });
+      } catch (err) {
+        console.error('Error saving company profile to Supabase:', err);
+      }
+    }
 
     setRegSuccess('¡Empresa y Gerente registrados correctamente! Ya puedes iniciar sesión.');
     
@@ -798,7 +956,7 @@ export default function App() {
     }, 2500);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
@@ -815,7 +973,7 @@ export default function App() {
       return;
     }
 
-    let matchedUser;
+    let matchedUser = null;
     let finalRuc = '';
 
     if (loginType === 'gerente') {
@@ -828,11 +986,7 @@ export default function App() {
         return;
       }
 
-      matchedUser = getRegisteredUsers().find(
-        u => u.ruc === cleanRuc &&
-             u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
-             u.contrasenaSol === cleanPass
-      );
+      matchedUser = await validateUserCloud(cleanUser, cleanPass, cleanRuc);
 
       if (!matchedUser) {
         setLoginError('Credenciales Clave SOL de Gerente inválidas para este RUC. Verifica tus datos o regístrate.');
@@ -847,10 +1001,7 @@ export default function App() {
       finalRuc = cleanRuc;
     } else {
       // Colaborador login (No RUC required)
-      matchedUser = getRegisteredUsers().find(
-        u => u.usuarioSol.toUpperCase() === cleanUser.toUpperCase() &&
-             u.contrasenaSol === cleanPass
-      );
+      matchedUser = await validateUserCloud(cleanUser, cleanPass);
 
       if (!matchedUser) {
         setLoginError('Usuario o Contraseña incorrectos. Verifica tus credenciales o solicita el alta de tu usuario en Configuración.');
@@ -871,25 +1022,53 @@ export default function App() {
       finalRuc = matchedUser.ruc;
     }
 
+    if (matchedUser.estado === 'PENDIENTE') {
+      setLoginError('Tu cuenta aún está en proceso de aprobación. Comunícate con soporte para activarla.');
+      return;
+    }
+
     const finalRole = matchedUser.role;
 
     // Load company config for this RUC
     let userCompanyConfig = DEFAULT_COMPANY_CONFIG;
     try {
-      const stored = localStorage.getItem('mype_company_config_' + finalRuc);
-      if (stored) {
-        userCompanyConfig = JSON.parse(stored);
-      } else {
-        // If not found, create a customized default for this user
-        userCompanyConfig = {
-          ruc: finalRuc,
-          razonSocial: localStorage.getItem('mype_company_name_' + finalRuc) || (finalRuc === '20601234567' ? 'Empresa de Servicios Demo SAC' : `MYPE RUC ${finalRuc} S.A.C.`),
-          direccion: 'Av. Las Flores 450, San Isidro, Lima, Perú',
-          telefono: '(01) 456-7890',
-          correo: 'contacto@empresamype.pe',
-          representanteLegal: matchedUser.fullName.replace(' (Gerente General)', '')
-        };
-        localStorage.setItem('mype_company_config_' + finalRuc, JSON.stringify(userCompanyConfig));
+      let loadedFromSupabase = false;
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase
+          .from('configuracion_empresa')
+          .select('*')
+          .eq('ruc', finalRuc)
+          .maybeSingle();
+        
+        if (data && !error) {
+          userCompanyConfig = {
+            ruc: data.ruc,
+            razonSocial: data.razon_social,
+            direccion: data.direccion,
+            telefono: data.telefono,
+            correo: data.correo,
+            representanteLegal: data.representante_legal
+          };
+          loadedFromSupabase = true;
+        }
+      }
+
+      if (!loadedFromSupabase) {
+        const stored = localStorage.getItem('mype_company_config_' + finalRuc);
+        if (stored) {
+          userCompanyConfig = JSON.parse(stored);
+        } else {
+          // If not found, create a customized default for this user
+          userCompanyConfig = {
+            ruc: finalRuc,
+            razonSocial: localStorage.getItem('mype_company_name_' + finalRuc) || (finalRuc === '20601234567' ? 'Empresa de Servicios Demo SAC' : `MYPE RUC ${finalRuc} S.A.C.`),
+            direccion: 'Av. Las Flores 450, San Isidro, Lima, Perú',
+            telefono: '(01) 456-7890',
+            correo: 'contacto@empresamype.pe',
+            representanteLegal: matchedUser.fullName.replace(' (Gerente General)', '')
+          };
+          localStorage.setItem('mype_company_config_' + finalRuc, JSON.stringify(userCompanyConfig));
+        }
       }
     } catch (e) {
       console.error('Error loading custom company config', e);
@@ -2668,6 +2847,28 @@ export default function App() {
             }
             return null;
           })()}
+
+          {/* SUPABASE CONNECTION & TABLE CREATION STATUS */}
+          {isSupabaseConfigured && supabaseError && (
+            <div className="bg-blue-50/95 dark:bg-slate-900 border border-blue-200 dark:border-blue-900 text-slate-800 dark:text-slate-200 p-5 rounded-3xl flex flex-col md:flex-row items-start gap-4 shadow-sm animate-fadeIn">
+              <div className="p-2 bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 rounded-2xl shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="text-xs space-y-2 flex-1">
+                <span className="font-extrabold text-blue-900 dark:text-blue-400 block uppercase tracking-wider text-[11px]">☁️ Conexión Supabase Activa - Requiere Script SQL</span>
+                <p className="leading-relaxed font-sans text-slate-650 dark:text-slate-300">
+                  Hemos conectado la aplicación a tu cuenta de Supabase en <code className="bg-slate-200/60 dark:bg-slate-850 px-1 py-0.5 rounded text-[10px] text-blue-700 dark:text-blue-300">{import.meta.env.VITE_SUPABASE_URL}</code>, pero tu base de datos aún no tiene las tablas creadas en la nube.
+                </p>
+                <div className="bg-slate-100/80 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-1 text-slate-500 dark:text-slate-400">
+                  <span className="font-bold text-slate-700 dark:text-slate-300 block">Detalle técnico del error:</span>
+                  <p className="font-mono text-[10.5px] text-red-650 dark:text-red-400 leading-snug">{supabaseError}</p>
+                </div>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  💡 Solución fácil: Ve a tu panel de Supabase &gt; SQL Editor, copia y pega las sentencias SQL provistas en tu chat para crear las tablas <code className="bg-emerald-50 dark:bg-emerald-950/40 px-1 rounded text-[10px]">usuarios</code>, <code className="bg-emerald-50 dark:bg-emerald-950/40 px-1 rounded text-[10px]">configuracion_empresa</code> y <code className="bg-emerald-50 dark:bg-emerald-950/40 px-1 rounded text-[10px]">transacciones</code>.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* MAIN BENTO GRID */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">

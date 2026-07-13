@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Building, Save, Phone, Mail, MapPin, User, ShieldAlert, CheckCircle, Users, Trash2, Plus, Key, Eye, EyeOff } from 'lucide-react';
+import { Building, Save, Phone, Mail, MapPin, User, ShieldAlert, CheckCircle, Users, Trash2, Plus, Key, Eye, EyeOff, CloudLightning } from 'lucide-react';
 import { CompanyConfig, UserRole } from '../types';
-import { getUsersByRuc, registerUser, deleteUser, SimulatedUser } from '../usuarios';
+import { getUsersByRucCloud, registerUserCloud, deleteUserCloud, SimulatedUser } from '../usuarios';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
+
 
 interface ConfiguracionEmpresaProps {
   currentUserRole: UserRole;
@@ -41,8 +43,8 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
   const [userSuccess, setUserSuccess] = useState('');
 
   // Load users associated with this RUC
-  const loadUsers = () => {
-    const list = getUsersByRuc(config.ruc);
+  const loadUsers = async () => {
+    const list = await getUsersByRucCloud(config.ruc);
     setUsersList(list);
   };
 
@@ -58,7 +60,7 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
     setIsSaved(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isGerente) return;
 
@@ -66,15 +68,31 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
       localStorage.setItem('mype_company_config_' + config.ruc, JSON.stringify(config));
       // Save general key as well for backward compatibility
       localStorage.setItem('mype_company_config', JSON.stringify(config));
+
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase
+          .from('configuracion_empresa')
+          .upsert({
+            ruc: config.ruc,
+            razon_social: config.razonSocial,
+            direccion: config.direccion,
+            telefono: config.telefono,
+            correo: config.correo,
+            representante_legal: config.representanteLegal
+          });
+        if (error) throw error;
+      }
+
       setIsSaved(true);
       onConfigChange(config);
       setTimeout(() => setIsSaved(false), 4000);
     } catch (e) {
-      alert('Error al guardar la configuración');
+      console.error(e);
+      alert('Error al guardar la configuración en la base de datos');
     }
   };
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserError('');
     setUserSuccess('');
@@ -92,7 +110,7 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
       fullName: newFullName.trim()
     };
 
-    const success = registerUser(newUser);
+    const success = await registerUserCloud(newUser);
     if (success) {
       setUserSuccess(`¡Acceso creado con éxito para ${newUser.fullName}!`);
       setNewFullName('');
@@ -106,14 +124,14 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
     }
   };
 
-  const handleDeleteUser = (usuarioSolToDelete: string) => {
+  const handleDeleteUser = async (usuarioSolToDelete: string) => {
     if (usuarioSolToDelete.toUpperCase() === 'GERENTE_MYPE') {
       alert('No se puede eliminar el usuario Gerente raíz del sistema de demostración.');
       return;
     }
 
     if (confirm(`¿Está seguro de revocar el acceso para el usuario SOL ${usuarioSolToDelete}?`)) {
-      deleteUser(config.ruc, usuarioSolToDelete);
+      await deleteUserCloud(config.ruc, usuarioSolToDelete);
       setUserSuccess('Acceso revocado correctamente.');
       loadUsers();
       setTimeout(() => setUserSuccess(''), 3000);

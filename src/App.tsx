@@ -495,34 +495,47 @@ export default function App() {
         setSupabaseError(null); // Clear errors on success
 
         if (data) {
-          const mapped: Transaction[] = data.map(tx => ({
-            id: tx.id,
-            fecha: tx.fecha,
-            tipo: tx.tipo as any,
-            montoBase: Number(tx.monto_base),
-            igv: Number(tx.igv),
-            total: Number(tx.total),
-            glosa: tx.glosa || '',
-            rucClienteProveedor: tx.ruc_cliente_proveedor || '',
-            documento: tx.documento || '',
-            creadoPor: (tx.creado_por || 'EMPLEADO') as any,
-            formaPago: tx.forma_pago || 'EFECTIVO',
-            cuentaOrigen: tx.cuenta_origen || '',
-            cuentaDestino: tx.cuenta_destino || '',
-            catalogItemId: tx.catalog_item_id || undefined,
-            cantidad: tx.cantidad ? Number(tx.cantidad) : undefined,
-            precioUnitario: tx.precio_unitario ? Number(tx.precio_unitario) : undefined,
-            esMovimientoInventario: tx.es_movimiento_inventario || false,
-            tipoInventario: tx.tipo_inventario as any,
-            montoDetraccion: tx.monto_detraccion ? Number(tx.monto_detraccion) : undefined,
-            montoRetencion: tx.monto_retencion ? Number(tx.monto_retencion) : undefined,
-          }));
+          const mapped: Transaction[] = data.map(tx => {
+            const parsedCreadoPor = tx.creado_por || 'EMPLEADO';
+            const hasColon = parsedCreadoPor.includes(':');
+            const role = hasColon ? parsedCreadoPor.split(':')[0] : parsedCreadoPor;
+            const fullName = hasColon ? parsedCreadoPor.split(':')[1] : undefined;
+
+            return {
+              id: tx.id,
+              fecha: tx.fecha,
+              tipo: tx.tipo as any,
+              montoBase: Number(tx.monto_base),
+              igv: Number(tx.igv),
+              total: Number(tx.total),
+              glosa: tx.glosa || '',
+              rucClienteProveedor: tx.ruc_cliente_proveedor || '',
+              documento: tx.documento || '',
+              creadoPor: (role || 'EMPLEADO') as any,
+              creadoPorNombre: fullName,
+              formaPago: tx.forma_pago || 'EFECTIVO',
+              cuentaOrigen: tx.cuenta_origen || '',
+              cuentaDestino: tx.cuenta_destino || '',
+              catalogItemId: tx.catalog_item_id || undefined,
+              cantidad: tx.cantidad ? Number(tx.cantidad) : undefined,
+              precioUnitario: tx.precio_unitario ? Number(tx.precio_unitario) : undefined,
+              esMovimientoInventario: tx.es_movimiento_inventario || false,
+              tipoInventario: tx.tipo_inventario as any,
+              montoDetraccion: tx.monto_detraccion ? Number(tx.monto_detraccion) : undefined,
+              montoRetencion: tx.monto_retencion ? Number(tx.monto_retencion) : undefined,
+            };
+          });
 
           // Avoid updating state if the contents are identical (prevent render thrashing)
           setTransactions(prev => {
-            if (JSON.stringify(mapped) !== JSON.stringify(prev)) {
-              prevTransactionsRef.current = mapped;
-              return mapped;
+            const unsavedLocal = prev.filter(tx => 
+              tx.id.startsWith('tx_user_') && !mapped.some(m => m.id === tx.id)
+            );
+            const merged = [...unsavedLocal, ...mapped];
+            merged.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id));
+            if (JSON.stringify(merged) !== JSON.stringify(prev)) {
+              prevTransactionsRef.current = merged;
+              return merged;
             }
             return prev;
           });
@@ -587,7 +600,7 @@ export default function App() {
           glosa: tx.glosa,
           ruc_cliente_proveedor: tx.rucClienteProveedor,
           documento: tx.documento,
-          creado_por: tx.creadoPor,
+          creado_por: tx.creadoPorNombre ? `${tx.creadoPor}:${tx.creadoPorNombre}` : tx.creadoPor,
           forma_pago: tx.formaPago,
           cuenta_origen: tx.cuentaOrigen,
           cuenta_destino: tx.cuentaDestino,
@@ -1292,6 +1305,8 @@ export default function App() {
     };
 
     setTransactions(prev => [newTx, ...prev]);
+    const txPeriod = itemDate.slice(0, 7);
+    setPeriod(txPeriod);
     
     // Reset form fields and flags
     setFormMontoBase('');
@@ -1424,6 +1439,8 @@ export default function App() {
     }
 
     setTransactions(prev => [newTx, ...prev]);
+    const txPeriod = mFecha.slice(0, 7);
+    setPeriod(txPeriod);
 
     // Close Modal and Reset states
     setActiveModal(null);
@@ -2840,7 +2857,7 @@ export default function App() {
           {/* MAIN BENTO GRID */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
 
-          {activeView === 'configuracion' && (
+          {moduloActivo === 'configuracion' && (
             <div className="xl:col-span-12">
               <ConfiguracionEmpresa 
                 currentUserRole={currentUserRole}
@@ -2908,55 +2925,57 @@ export default function App() {
 
           {/* DASHBOARD RESUMEN DE LIQUIDACIÓN - BENTO BOX 2 */}
           {moduloActivo === 'impuestos' && (
-            <div id="liquidation-summary-box" className="col-span-12 xl:col-span-5 bg-indigo-600 rounded-3xl p-6 text-white flex flex-col justify-between shadow-md animate-fadeIn">
+            <div id="liquidation-summary-box" className="col-span-12 xl:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-white flex flex-col justify-between shadow-xl animate-fadeIn">
               <div className="space-y-4">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="text-indigo-100 text-xs font-bold uppercase tracking-widest mb-1 font-heading">
+                    <h2 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1 font-heading">
                       {modoSencillo ? "CÁLCULO SENCILLO DE IMPUESTOS" : "LIQUIDACIÓN MYPE ESTIMADA"}
                     </h2>
-                    <div className="text-[11px] bg-white/10 px-2 py-0.5 rounded text-indigo-100 inline-block font-mono">
+                    <div className="text-[11px] bg-slate-800 px-2 py-0.5 rounded text-indigo-400 inline-block font-mono border border-slate-700">
                       Periodo {period}
                     </div>
                   </div>
-                  <TrendingUp className="w-6 h-6 text-indigo-200" />
+                  <TrendingUp className="w-6 h-6 text-indigo-400 animate-pulse" />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-[11px] text-indigo-200 uppercase tracking-wider font-semibold">
+                  <div className="text-[11px] text-slate-300 uppercase tracking-wider font-semibold">
                     {modoSencillo ? "💸 TOTAL DE IMPUESTOS A PAGAR ESTE MES" : "TRIBUTOS POR PAGAR A SUNAT"}
                   </div>
                   
                   {/* Total indicator with deferral applied or not */}
-                  <div className="text-3xl font-black tracking-tight font-mono">
+                  <div className="text-3.5xl font-black tracking-tight font-mono text-emerald-400">
                     S/. {totalAbonadoEfectivo.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
 
-                {/* Sub-itemization rows */}
-                <div className="space-y-2 pt-2 border-t border-indigo-400/50 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-indigo-200">
-                      {modoSencillo ? "(+) Impuesto IGV (Ventas menos Compras):" : "(+) IGV por pagar (18%):"}
+                {/* Sub-itemization rows with rich colors */}
+                <div className="space-y-2 pt-3 border-t border-slate-800 text-xs">
+                  <div className="flex justify-between items-center bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-slate-300 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                      {modoSencillo ? "Impuesto IGV (Ventas - Compras):" : "IGV por pagar (18%):"}
                     </span>
-                    <span className="font-mono font-bold">
+                    <span className="font-mono font-bold text-cyan-400 bg-cyan-400/10 px-2.5 py-1 rounded-lg border border-cyan-500/20">
                       S/. {igvPagarCalculado.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-indigo-200">
-                      {modoSencillo ? `(+) Pago mensual de Impuesto a la Renta (${(rentaTasa * 100).toFixed(1)}%):` : `(+) Impuesto Renta (${rentaTasa * 100}%):`}
+                  <div className="flex justify-between items-center bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    <span className="text-slate-300 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                      {modoSencillo ? `Impuesto Renta (${(rentaTasa * 100).toFixed(1)}%):` : `Impuesto Renta (${rentaTasa * 100}%):`}
                     </span>
-                    <span className="font-mono font-bold">
+                    <span className="font-mono font-bold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
                       S/. {rentaPagarCalculado.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                   {applyIgvJusto && (
-                    <div className="bg-yellow-400/20 text-yellow-100 p-2 rounded-lg text-[10px] space-y-1 border border-yellow-300/30">
-                      <div className="font-bold flex items-center gap-1">
-                        <span className="text-xs">⚖️</span> {modoSencillo ? "¡Pagarás el IGV en 3 meses!" : "¡Prorroga IGV Justo Activada!"}
+                    <div className="bg-rose-500/10 text-rose-300 p-3 rounded-2xl text-[10px] space-y-1 border border-rose-500/20 mt-2">
+                      <div className="font-bold flex items-center gap-1.5 text-rose-400">
+                        <span>⚖️</span> {modoSencillo ? "¡Pagarás el IGV en 3 meses!" : "¡Prorroga IGV Justo Activada!"}
                       </div>
-                      <p className="leading-tight text-white/90">
+                      <p className="leading-tight text-slate-300">
                         {modoSencillo 
                           ? `Este mes solo pagas tu Impuesto a la Renta. El pago del IGV de S/. ${igvPagarCalculado.toFixed(2)} se posterga hasta por 3 meses (90 días) para darte más aire con tu efectivo.`
                           : `Solo abonas el Impuesto a la Renta este mes. El pago de S/. ${igvPagarCalculado.toFixed(2)} se difiere hasta por 90 días.`}
@@ -2966,52 +2985,52 @@ export default function App() {
                 </div>
 
                 {/* Renta category and scale setup */}
-                <div className="pt-2 border-t border-indigo-400/30 space-y-2">
-                  <label className="text-[11px] text-indigo-200 font-semibold block uppercase">
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <label className="text-[11px] text-slate-400 font-semibold block uppercase">
                     {modoSencillo ? "Elige el tamaño de tu negocio (Ventas anuales):" : "Escala de Impuesto Renta (Anual):"}
                   </label>
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
                     <button 
                       onClick={() => setAutoRenteRate('300_LIMIT')} 
-                      className={`py-1 px-2 rounded-lg font-bold border ${autoRenteRate === '300_LIMIT' ? 'bg-white text-indigo-700 border-white' : 'bg-transparent text-indigo-100 border-indigo-400'}`}
+                      className={`py-1.5 px-2.5 rounded-xl font-bold text-[10.5px] border transition-all ${autoRenteRate === '300_LIMIT' ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'}`}
                     >
-                      {modoSencillo ? "Chico (Ventas menores a S/. 1.65M - Tasa 1%)" : "Hasta 300 UIT (Tasa 1.0%)"}
+                      {modoSencillo ? "Chico (< S/. 1.65M - Tasa 1%)" : "Hasta 300 UIT (Tasa 1.0%)"}
                     </button>
                     <button 
                       onClick={() => setAutoRenteRate('OVER_300')}
-                      className={`py-1 px-2 rounded-lg font-bold border ${autoRenteRate === 'OVER_300' ? 'bg-white text-indigo-700 border-white' : 'bg-transparent text-indigo-100 border-indigo-400'}`}
+                      className={`py-1.5 px-2.5 rounded-xl font-bold text-[10.5px] border transition-all ${autoRenteRate === 'OVER_300' ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'}`}
                     >
-                      {modoSencillo ? "Mediano (Ventas hasta S/. 9.35M - Tasa 1.5%)" : "> 300 a 1700 UIT (1.5%)"}
+                      {modoSencillo ? "Mediano (< S/. 9.35M - Tasa 1.5%)" : "> 300 a 1700 UIT (1.5%)"}
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-2">
                   <input 
                     type="checkbox" 
                     id="igvJustoCheck" 
                     checked={applyIgvJusto}
                     onChange={(e) => setApplyIgvJusto(e.target.checked)}
-                    className="rounded bg-indigo-700 text-indigo-600 focus:ring-0 w-3.5 h-3.5 border-indigo-400 cursor-pointer"
+                    className="rounded bg-slate-950 border-slate-800 text-indigo-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer"
                   />
-                  <label htmlFor="igvJustoCheck" className="text-[11px] font-bold text-indigo-100 cursor-pointer select-none hover:text-white flex items-center gap-1.5">
+                  <label htmlFor="igvJustoCheck" className="text-[11px] font-bold text-slate-400 cursor-pointer select-none hover:text-slate-200 flex items-center gap-1.5">
                     {modoSencillo ? "Quiero acorgerse al 'IGV Justo' (Pagar el IGV en 3 meses)" : "Acogerse a IGV Justo (Ley 30524)"}
-                    <HelpCircle className="w-3.5 h-3.5 text-indigo-200 inline" title="Permite a las MYPE con ventas anuales menores de 1700 UIT prorrogar el pago del IGV hasta por 3 meses" />
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 inline" title="Permite a las MYPE con ventas anuales menores de 1700 UIT prorrogar el pago del IGV hasta por 3 meses" />
                   </label>
                 </div>
               </div>
 
-              {/* Total Summary figures beneath */}
-              <div className="mt-4 pt-4 border-t border-indigo-400 flex justify-between text-[11px] text-indigo-200">
+              {/* Total Summary figures beneath with rich contrast */}
+              <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between text-[11px] text-slate-400">
                 <div>
-                  <p className="uppercase text-[9px]">{modoSencillo ? "Tus Ventas sin IGV" : "Ingresos del Mes"}</p>
-                  <p className="font-bold text-white font-mono">
+                  <p className="uppercase text-[9px] font-bold text-slate-500">{modoSencillo ? "Tus Ventas sin IGV" : "Ingresos del Mes"}</p>
+                  <p className="font-bold text-slate-300 font-mono mt-0.5">
                     S/. {totalVentasBase.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="uppercase text-[9px]">{modoSencillo ? "Tus Compras para Descontar" : "Compras con Crédito"}</p>
-                  <p className="font-bold text-white font-mono">
+                  <p className="uppercase text-[9px] font-bold text-slate-500">{modoSencillo ? "Tus Compras para Descontar" : "Compras con Crédito"}</p>
+                  <p className="font-bold text-slate-300 font-mono mt-0.5">
                     S/. {totalComprasBase.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -3520,7 +3539,7 @@ export default function App() {
                 </div>
 
                 {/* TAB SWITCHER */}
-                {activeView === 'libros' && (
+                {moduloActivo === 'libros' && (
                   <div className="flex flex-wrap border-b border-slate-200 mb-5 gap-y-2 select-none">
                     <button
                       type="button"
@@ -3661,7 +3680,7 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
                           {(() => {
-                            const sales = transactions.filter(t => t.tipo === 'VENTA');
+                            const sales = filteredTransactions.filter(t => t.tipo === 'VENTA');
                             if (sales.length === 0) {
                               return (
                                 <tr>
@@ -3753,7 +3772,7 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
                           {(() => {
-                            const purchases = transactions.filter(t => t.tipo === 'COMPRA');
+                            const purchases = filteredTransactions.filter(t => t.tipo === 'COMPRA');
                             if (purchases.length === 0) {
                               return (
                                 <tr>

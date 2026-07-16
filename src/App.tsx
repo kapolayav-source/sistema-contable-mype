@@ -194,7 +194,8 @@ export default function App() {
   // Custom Transaction List
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     try {
-      const saved = localStorage.getItem('mype_transactions');
+      const activeRuc = localStorage.getItem('mype_user_ruc') || '20601234567';
+      const saved = localStorage.getItem('mype_transactions_' + activeRuc) || localStorage.getItem('mype_transactions');
       const loaded = saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
       if (Array.isArray(loaded)) {
         return loaded.map((tx: any) => ({
@@ -445,8 +446,10 @@ export default function App() {
   }, [projectedIncomeUIT]);
 
   useEffect(() => {
-    localStorage.setItem('mype_transactions', JSON.stringify(transactions));
-  }, [transactions]);
+    if (ruc) {
+      localStorage.setItem('mype_transactions_' + ruc, JSON.stringify(transactions));
+    }
+  }, [transactions, ruc]);
 
   const prevFirstTxIdRef = useRef<string | null>(null);
 
@@ -486,6 +489,59 @@ export default function App() {
 
   // --- Supabase Transaction Sync Effects ---
   const prevTransactionsRef = useRef<Transaction[]>([]);
+
+  // Synchronize transactions state when RUC changes (logout, login, change company)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('mype_transactions_' + ruc);
+      if (saved) {
+        const loaded = JSON.parse(saved);
+        if (Array.isArray(loaded)) {
+          const mapped = loaded.map((tx: any) => ({
+            ...tx,
+            fecha: typeof tx.fecha === 'string' ? tx.fecha : new Date().toISOString().split('T')[0],
+            montoBase: typeof tx.montoBase === 'number' ? tx.montoBase : (Number(tx.montoBase) || 0),
+            igv: typeof tx.igv === 'number' ? tx.igv : (Number(tx.igv) || 0),
+            total: typeof tx.total === 'number' ? tx.total : (Number(tx.total) || 0),
+            documento: typeof tx.documento === 'string' ? tx.documento : '',
+            glosa: typeof tx.glosa === 'string' ? tx.glosa : '',
+            rucClienteProveedor: typeof tx.rucClienteProveedor === 'string' ? tx.rucClienteProveedor : '',
+            montoDetraccion: tx.montoDetraccion !== undefined ? (Number(tx.montoDetraccion) || 0) : undefined,
+            montoRetencion: tx.montoRetencion !== undefined ? (Number(tx.montoRetencion) || 0) : undefined
+          }));
+          setTransactions(mapped);
+          prevTransactionsRef.current = mapped;
+          return;
+        }
+      }
+      
+      // If no company-specific transactions found, try global ones or fall back to INITIAL_TRANSACTIONS
+      const legacySaved = localStorage.getItem('mype_transactions');
+      const loaded = legacySaved ? JSON.parse(legacySaved) : INITIAL_TRANSACTIONS;
+      if (Array.isArray(loaded)) {
+        const mapped = loaded.map((tx: any) => ({
+          ...tx,
+          fecha: typeof tx.fecha === 'string' ? tx.fecha : new Date().toISOString().split('T')[0],
+          montoBase: typeof tx.montoBase === 'number' ? tx.montoBase : (Number(tx.montoBase) || 0),
+          igv: typeof tx.igv === 'number' ? tx.igv : (Number(tx.igv) || 0),
+          total: typeof tx.total === 'number' ? tx.total : (Number(tx.total) || 0),
+          documento: typeof tx.documento === 'string' ? tx.documento : '',
+          glosa: typeof tx.glosa === 'string' ? tx.glosa : '',
+          rucClienteProveedor: typeof tx.rucClienteProveedor === 'string' ? tx.rucClienteProveedor : '',
+          montoDetraccion: tx.montoDetraccion !== undefined ? (Number(tx.montoDetraccion) || 0) : undefined,
+          montoRetencion: tx.montoRetencion !== undefined ? (Number(tx.montoRetencion) || 0) : undefined
+        }));
+        setTransactions(mapped);
+        prevTransactionsRef.current = mapped;
+      } else {
+        setTransactions(INITIAL_TRANSACTIONS);
+        prevTransactionsRef.current = INITIAL_TRANSACTIONS;
+      }
+    } catch {
+      setTransactions(INITIAL_TRANSACTIONS);
+      prevTransactionsRef.current = INITIAL_TRANSACTIONS;
+    }
+  }, [ruc]);
 
   // 1. Fetch transactions from Supabase on load and on a periodic 8s polling interval for real-time collaboration
   useEffect(() => {

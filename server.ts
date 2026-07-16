@@ -214,63 +214,64 @@ CRITICAL - MODO SENCILLO ACTIVADO: El usuario es un emprendedor peruano promedio
         return res.status(400).json({ error: 'El número debe ser de 8 dígitos para DNI o 11 para RUC.' });
       }
 
-      // 1. Try apis.net.pe V2 if a token is configured in process.env.APIS_NET_PE_TOKEN
-      const token = process.env.APIS_NET_PE_TOKEN;
-      if (token && token.trim()) {
-        try {
-          let url = '';
-          if (cleanNum.length === 8) {
-            url = `https://api.apis.net.pe/v2/reniec/dni?numero=${cleanNum}`;
-          } else {
-            url = `https://api.apis.net.pe/v2/sunat/ruc?numero=${cleanNum}`;
+      // 1. Try apis.net.pe V2 with configured token or public test token
+      const token = (process.env.APIS_NET_PE_TOKEN && process.env.APIS_NET_PE_TOKEN.trim())
+        ? process.env.APIS_NET_PE_TOKEN.trim()
+        : 'apis-token-1.apis.net.pe';
+
+      try {
+        let url = '';
+        if (cleanNum.length === 8) {
+          url = `https://api.apis.net.pe/v2/reniec/dni?numero=${cleanNum}`;
+        } else {
+          url = `https://api.apis.net.pe/v2/sunat/ruc?numero=${cleanNum}`;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+
+        const apiRes = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Referer': 'https://apis.net.pe/api-consulta-ruc-dni',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           }
+        });
+        clearTimeout(timeoutId);
 
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
-
-          const apiRes = await fetch(url, {
-            signal: controller.signal,
-            headers: {
-              'Authorization': `Bearer ${token.trim()}`,
-              'Referer': 'https://apis.net.pe/api-consulta-ruc-dni',
-              'User-Agent': 'Mozilla/5.0'
-            }
-          });
-          clearTimeout(timeoutId);
-
-          if (apiRes.ok) {
-            const data: any = await apiRes.json();
-            if (data) {
-              if (cleanNum.length === 8) {
-                const nombreCompleto = `${data.nombres || ''} ${data.apellidoPaterno || ''} ${data.apellidoMaterno || ''}`.trim().toUpperCase();
-                if (nombreCompleto) {
-                  return res.json({
-                    success: true,
-                    tipo: 'DNI',
-                    numero: cleanNum,
-                    nombre: nombreCompleto,
-                    direccion: 'Domicilio Declarado - RENIEC',
-                    origen: 'RENIEC Oficial en Tiempo Real (apis.net.pe)'
-                  });
-                }
-              } else {
-                const razonSocial = (data.razonSocial || data.nombre || '').trim().toUpperCase();
-                if (razonSocial) {
-                  return res.json({
-                    success: true,
-                    tipo: 'RUC',
-                    numero: cleanNum,
-                    nombre: razonSocial,
-                    direccion: data.direccion || 'Domicilio Fiscal Declarado - SUNAT',
-                    origen: 'SUNAT Oficial en Tiempo Real (apis.net.pe)'
-                  });
-                }
+        if (apiRes.ok) {
+          const data: any = await apiRes.json();
+          if (data) {
+            if (cleanNum.length === 8) {
+              const nombreCompleto = `${data.nombres || ''} ${data.apellidoPaterno || ''} ${data.apellidoMaterno || ''}`.trim().toUpperCase();
+              if (nombreCompleto) {
+                return res.json({
+                  success: true,
+                  tipo: 'DNI',
+                  numero: cleanNum,
+                  nombre: nombreCompleto,
+                  direccion: 'Domicilio Declarado - RENIEC',
+                  origen: 'RENIEC Oficial en Tiempo Real (apis.net.pe)'
+                });
+              }
+            } else {
+              const razonSocial = (data.razonSocial || data.nombre || '').trim().toUpperCase();
+              if (razonSocial) {
+                return res.json({
+                  success: true,
+                  tipo: 'RUC',
+                  numero: cleanNum,
+                  nombre: razonSocial,
+                  direccion: data.direccion || 'Domicilio Fiscal Declarado - SUNAT',
+                  origen: 'SUNAT Oficial en Tiempo Real (apis.net.pe)'
+                });
               }
             }
           }
-        } catch (v2Err) {
-          console.error('Error in apis.net.pe v2 query:', v2Err);
         }
+      } catch (v2Err) {
+        console.error('Error in apis.net.pe v2 query:', v2Err);
       }
 
       // 2. Try apis.net.pe V1 query as fallback (legacy free, sometimes works or throttles)

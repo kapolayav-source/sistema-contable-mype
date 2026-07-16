@@ -145,28 +145,28 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
     }));
   };
 
-  // Styling
+  // Styling - optimized for premium contrast and perfect visibility in both light and dark modes
   const cardClass = darkMode 
-    ? 'bg-slate-900 border-slate-800 text-white shadow-md' 
-    : 'bg-white border-slate-200/80 text-slate-700 shadow-xs';
+    ? 'bg-slate-900 border-slate-800 text-slate-100 shadow-xl' 
+    : 'bg-white border-slate-300 text-slate-900 shadow-sm';
   
   const inputBgClass = darkMode 
-    ? 'bg-slate-850 border-slate-750 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' 
-    : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500 focus:bg-white focus:ring-1 focus:ring-indigo-500';
+    ? 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' 
+    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600/30';
 
-  const labelClass = darkMode ? 'text-slate-400' : 'text-slate-500';
+  const labelClass = darkMode ? 'text-slate-400' : 'text-slate-700 font-bold';
 
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* 1. EMISOR FISCAL DETAILS CARD */}
-      <div className={`p-6 rounded-3xl border transition-colors duration-300 ${cardClass}`}>
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+      <div className={`p-6 rounded-3xl border transition-all duration-300 ${cardClass}`}>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
           <div>
             <span className="text-[9px] bg-indigo-50 text-indigo-700 font-black tracking-widest px-2.5 py-1 rounded-full border border-indigo-100 uppercase dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900/60">
               CONFIGURACIÓN GENERAL
             </span>
             <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white mt-3 flex items-center gap-2">
-              <Building className="w-5 h-5 text-indigo-600" />
+              <Building className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <span>Datos Fiscales de la Empresa</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -205,7 +205,7 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
                   value={config.ruc}
                   disabled
                   className={`w-full font-mono font-bold rounded-xl py-2.5 px-3.5 pl-10 text-xs focus:outline-none transition-all ${
-                    darkMode ? 'bg-slate-950 border-slate-850 text-slate-400' : 'bg-slate-100 border-slate-250 text-slate-500'
+                    darkMode ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-300 text-slate-500'
                   }`}
                 />
                 <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
@@ -298,7 +298,7 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
             <div className="flex justify-end pt-3">
               <button
                 type="submit"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-2.5 px-5 rounded-xl transition-all shadow-md shadow-indigo-200/30 flex items-center gap-1.5 cursor-pointer"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black py-2.5 px-5 rounded-xl transition-all shadow-md shadow-indigo-250/20 flex items-center gap-1.5 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 <span>Guardar Cambios de la Empresa</span>
@@ -316,8 +316,8 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
       </div>
 
       {/* 2. USER ACCESS MANAGEMENT (ONLY FOR GERENTE - "darle acceso a otra persona") */}
-      <div className={`p-6 rounded-3xl border transition-colors duration-300 ${cardClass}`}>
-        <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-5 mb-6">
+      <div className={`p-6 rounded-3xl border transition-all duration-300 ${cardClass}`}>
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-5 mb-6">
           <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300">
             <Users className="w-5 h-5" />
           </div>
@@ -331,56 +331,64 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
 
         {isGerente ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left side: Add User Form */}
-            <form onSubmit={handleAddUser} className="lg:col-span-5 space-y-4 bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-200/50 dark:border-slate-800/60">
-              <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wider flex items-center gap-1.5">
-                <Plus className="w-4 h-4 text-indigo-600" />
+            {/* Left side: Add User Form with rich layout and high contrast */}
+            <form onSubmit={handleAddUser} className="lg:col-span-5 space-y-4 bg-slate-50/80 dark:bg-slate-950/40 p-5 rounded-2xl border border-slate-300 dark:border-slate-800 shadow-xs">
+              <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wider flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                <Plus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>Crear Nuevo Acceso SOL</span>
               </h4>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-slate-400">Nombre Completo de la Persona</label>
+                <label className={`text-[10px] font-bold uppercase tracking-wider block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-700'}`}>
+                  Nombre Completo de la Persona
+                </label>
                 <input 
                   type="text"
                   placeholder="Ej. María Rojas (Contadora)"
                   value={newFullName}
                   onChange={(e) => setNewFullName(e.target.value)}
-                  className={`w-full rounded-xl py-2 px-3 text-xs focus:outline-none ${inputBgClass}`}
+                  className={`w-full rounded-xl py-2 px-3 text-xs focus:outline-none transition-all ${inputBgClass}`}
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-slate-400">Usuario SOL</label>
+                  <label className={`text-[10px] font-bold uppercase tracking-wider block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-700'}`}>
+                    Usuario SOL
+                  </label>
                   <input 
                     type="text"
                     placeholder="E.g. CONTADOR_AUX"
                     value={newUsuarioSol}
                     onChange={(e) => setNewUsuarioSol(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
-                    className={`w-full font-mono rounded-xl py-2 px-3 text-xs focus:outline-none ${inputBgClass}`}
+                    className={`w-full font-mono rounded-xl py-2 px-3 text-xs focus:outline-none transition-all ${inputBgClass}`}
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-slate-400">Contraseña SOL</label>
+                  <label className={`text-[10px] font-bold uppercase tracking-wider block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-700'}`}>
+                    Contraseña SOL
+                  </label>
                   <input 
                     type="text"
                     placeholder="Ej. Clave123*"
                     value={newContrasenaSol}
                     onChange={(e) => setNewContrasenaSol(e.target.value)}
-                    className={`w-full font-mono rounded-xl py-2 px-3 text-xs focus:outline-none ${inputBgClass}`}
+                    className={`w-full font-mono rounded-xl py-2 px-3 text-xs focus:outline-none transition-all ${inputBgClass}`}
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider block mb-1 text-slate-400">Rol del Sistema</label>
+                <label className={`text-[10px] font-bold uppercase tracking-wider block mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-700'}`}>
+                  Rol del Sistema
+                </label>
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
-                  className={`w-full rounded-xl py-2 px-3 text-xs focus:outline-none ${inputBgClass}`}
+                  className={`w-full rounded-xl py-2 px-3 text-xs focus:outline-none transition-all cursor-pointer ${inputBgClass}`}
                 >
                   <option value="EMPLEADO">Empleado (Sólo Ventas/Compras, sin eliminar)</option>
                   <option value="ADMINISTRADOR">Administrador (Puede modificar y ver todo)</option>
@@ -390,59 +398,59 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
               </div>
 
               {userError && (
-                <div className="text-[10.5px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 p-2.5 rounded-lg border border-rose-100 dark:border-rose-900/40">
+                <div className="text-[10.5px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/40">
                   ⚠️ {userError}
                 </div>
               )}
 
               {userSuccess && (
-                <div className="text-[10.5px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                <div className="text-[10.5px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-900/40">
                   ✅ {userSuccess}
                 </div>
               )}
 
               <button
                 type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-md shadow-indigo-200/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
                 <span>Generar Acceso SOL</span>
               </button>
             </form>
 
-            {/* Right side: Table of current users */}
+            {/* Right side: Table of current users with high readability */}
             <div className="lg:col-span-7 space-y-3">
-              <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wider">
+              <h4 className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-800'}`}>
                 Personal con acceso a RUC {config.ruc}
               </h4>
-              <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div className="overflow-x-auto rounded-2xl border border-slate-300 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/10">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-950 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                    <tr className="bg-slate-200/80 dark:bg-slate-950 text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-400 border-b border-slate-300 dark:border-slate-800">
                       <th className="p-3">Nombre / Integrante</th>
                       <th className="p-3">Credencial SOL</th>
                       <th className="p-3">Rol Contable</th>
                       <th className="p-3 text-right">Acción</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tbody className="divide-y divide-slate-300 dark:divide-slate-800">
                     {usersList.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-4 text-center text-slate-400 font-medium">
+                        <td colSpan={4} className="p-4 text-center text-slate-500 font-medium italic">
                           No hay otros usuarios registrados para este RUC.
                         </td>
                       </tr>
                     ) : (
                       usersList.map((usr) => (
-                        <tr key={usr.usuarioSol} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
-                          <td className="p-3 font-semibold text-slate-800 dark:text-slate-100">
+                        <tr key={usr.usuarioSol} className="hover:bg-slate-100/50 dark:hover:bg-slate-950/20 transition-colors">
+                          <td className="p-3 font-semibold text-slate-900 dark:text-slate-100">
                             {usr.fullName}
                           </td>
                           <td className="p-3">
-                            <div className="font-mono text-[10.5px] leading-tight space-y-0.5">
-                              <div><span className="text-[9px] text-slate-400">Usr:</span> {usr.usuarioSol}</div>
+                            <div className="font-mono text-[10.5px] leading-tight space-y-0.5 text-slate-800 dark:text-slate-200">
+                              <div><span className="text-[9px] text-slate-500 dark:text-slate-400">Usr:</span> {usr.usuarioSol}</div>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[9px] text-slate-400 font-sans">Psw:</span>
+                                <span className="text-[9px] text-slate-500 dark:text-slate-400 font-sans">Psw:</span>
                                 <span>{showPass[usr.usuarioSol] ? usr.contrasenaSol : '••••••••'}</span>
                                 <button
                                   type="button"
@@ -458,28 +466,28 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
                           <td className="p-3">
                             <span className={`inline-block px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wider uppercase border ${
                               usr.role === 'GERENTE' 
-                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-900/60 dark:text-indigo-300'
+                                ? 'bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-950/40 dark:border-indigo-900/60 dark:text-indigo-300'
                                 : usr.role === 'ADMINISTRADOR'
-                                ? 'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-950/40 dark:border-sky-900/60 dark:text-sky-300'
+                                ? 'bg-sky-100 border-sky-300 text-sky-850 dark:bg-sky-950/40 dark:border-sky-900/60 dark:text-sky-300'
                                 : usr.role === 'CONTADOR'
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300'
-                                : 'bg-slate-100 border-slate-250 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
+                                ? 'bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-900/60 dark:text-emerald-300'
+                                : 'bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
                             }`}>
                               {usr.role}
                             </span>
                           </td>
                           <td className="p-3 text-right">
                             {usr.usuarioSol.toUpperCase() !== 'GERENTE_MYPE' && usr.usuarioSol.toUpperCase() !== currentUserRole.toUpperCase() ? (
-                              <button
+                               <button
                                 type="button"
                                 onClick={() => handleDeleteUser(usr.usuarioSol)}
-                                className="text-rose-600 hover:text-rose-800 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 p-1.5 rounded-lg transition-colors cursor-pointer"
+                                className="text-rose-600 hover:text-rose-800 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/20 p-1.5 rounded-lg transition-colors cursor-pointer"
                                 title="Revocar acceso"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             ) : (
-                              <span className="text-[10px] text-slate-400 italic">Inmune</span>
+                              <span className="text-[10px] text-slate-500 italic font-medium">Inmune</span>
                             )}
                           </td>
                         </tr>
@@ -491,8 +499,8 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
             </div>
           </div>
         ) : (
-          <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-200/50 dark:border-slate-800/40 rounded-2xl text-xs flex gap-3 text-slate-500">
-            <Key className="w-5 h-5 text-slate-400 shrink-0" />
+          <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-300 dark:border-slate-800/40 rounded-2xl text-xs flex gap-3 text-slate-600 dark:text-slate-400 leading-relaxed">
+            <Key className="w-5 h-5 text-indigo-500 shrink-0" />
             <span>La creación de accesos y delegación de usuarios a compañeros de carrera está habilitada únicamente para la cuenta que posee el rol de <strong>GERENTE</strong>. Si usted ingresa con este rol, podrá agregar múltiples sub-usuarios con total seguridad.</span>
           </div>
         )}

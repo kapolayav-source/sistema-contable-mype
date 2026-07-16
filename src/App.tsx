@@ -36,6 +36,7 @@ import { exportToExcel, exportToPDF } from './exportHelper';
 import { getRegisteredUsers, registerUser, deleteUser, SimulatedUser, validateUserCloud, registerUserCloud } from './usuarios';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { ConfiguracionEmpresa, DEFAULT_COMPANY_CONFIG } from './components/ConfiguracionEmpresa';
+import { ComprobantePDFModal } from './components/ComprobantePDFModal';
 
 import imgOperaciones from './assets/images/navegacion_operaciones_1783371809409.jpg';
 import imgProductos from './assets/images/navegacion_productos_1783371823633.jpg';
@@ -217,6 +218,8 @@ export default function App() {
 
   const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'configuracion'>('transacciones');
   const [moduloActivo, setModuloActivo] = useState<'menu' | 'cronograma' | 'libros' | 'impuestos' | 'simulador' | 'configuracion'>('menu');
+  const [activeTab, setActiveTab] = useState<'Inicio' | 'SIRE' | 'Impuestos' | 'Simulador'>('Inicio');
+  const [selectedVentaComprobante, setSelectedVentaComprobante] = useState<Transaction | null>(null);
 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig>(() => {
     try {
@@ -373,6 +376,8 @@ export default function App() {
 
   // Inventory / Kardex Management States
   const [selectedDiarioTab, setSelectedDiarioTab] = useState<'diario' | 'mayor' | 'balance' | 'sunat_req' | 'inventario' | 'catalogo' | 'ventas' | 'compras' | 'inventario_balances'>('ventas');
+  const [ventasFiltroDoc, setVentasFiltroDoc] = useState<'TODOS' | 'FACTURAS' | 'BOLETAS'>('TODOS');
+  const [comprasFiltroDoc, setComprasFiltroDoc] = useState<'TODOS' | 'FACTURAS' | 'BOLETAS'>('TODOS');
   const [selectedMayorCta, setSelectedMayorCta] = useState<string>('1041');
   const [selectedInventoryProduct, setSelectedInventoryProduct] = useState<string>('1');
   const [showManualStockModal, setShowManualStockModal] = useState<boolean>(false);
@@ -1778,7 +1783,7 @@ export default function App() {
               </div>
               <div>
                 <h1 className={`text-xl font-extrabold tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Kipurev</h1>
-                <p className={`text-xs font-medium font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Acceso Seguro Clave SOL / Sandbox Simulación</p>
+                <p className={`text-xs font-medium font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Acceso Seguro Clave SOL SUNAT</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -1809,7 +1814,7 @@ export default function App() {
               darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'
             }`}>
               <div>
-                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-2">Simulador Tributario Oficial para MYPEs</span>
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block mb-2">Sistema Tributario Oficial para MYPEs</span>
                 <h2 className={`text-3xl font-bold tracking-tight font-heading leading-tight mb-4 ${
                   darkMode ? 'text-white' : 'text-slate-950'
                 }`}>
@@ -1818,7 +1823,7 @@ export default function App() {
                 <p className={`text-sm leading-relaxed mb-6 ${
                   darkMode ? 'text-slate-300' : 'text-slate-650 font-medium'
                 }`}>
-                  Nuestra plataforma te permite planificar tu impuesto mensual, verificar cronogramas de vencimiento automatizados según tu número de RUC, generar asientos en doble partida compatibles con el PCGE y consultar a nuestro especialista con Inteligencia Artificial.
+                  Nuestra plataforma te permite liquidar tu impuesto mensual, verificar cronogramas de vencimiento automatizados según tu número de RUC, generar asientos en doble partida compatibles con el PCGE y consultar a nuestro especialista con Inteligencia Artificial.
                 </p>
 
                 <div className="space-y-4">
@@ -1837,8 +1842,8 @@ export default function App() {
                       🔒
                     </div>
                     <div>
-                      <h4 className={`text-sm font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>Simulación Segura</h4>
-                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Tus credenciales y datos contables de demostración se guardan exclusivamente de manera local en tu navegador.</p>
+                      <h4 className={`text-sm font-bold ${darkMode ? 'text-slate-100' : 'text-slate-900'}`}>Seguridad de Datos</h4>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Tus credenciales y datos contables se guardan de manera local y privada en tu navegador.</p>
                     </div>
                   </div>
 
@@ -2200,456 +2205,206 @@ export default function App() {
   const hoverRowBg = darkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-100/70';
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 pb-12 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-700'}`}>
+    <div className={`min-h-screen flex font-sans transition-colors duration-300 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-700'}`}>
       
-      <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* LEFT SIDEBAR - CLEAN LAYOUT */}
-        <div className="lg:col-span-3 space-y-6 lg:sticky lg:top-6">
-          
-          {/* LOGO & BRAND CARD */}
-          <div className={`p-5 rounded-3xl border transition-colors duration-300 flex flex-col items-center text-center gap-3 ${cardBg}`}>
-            <div className="w-16 h-16 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900 shadow-md">
-              <KhipuRevLogo className="w-14 h-14" />
+      {/* SIDEBAR IZQUIERDO FIJO (240px de ancho) */}
+      <div className="w-[240px] h-screen sticky top-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-4 shrink-0 shadow-xs">
+        {/* TOP BLOCK */}
+        <div className="space-y-4">
+          {/* Logo en texto plano */}
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-heading font-black text-lg tracking-tight text-slate-900 dark:text-white">Kipurev</span>
+              <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/40 uppercase">RMT</span>
             </div>
-            <div>
-              <div className="flex items-center justify-center gap-1.5">
-                <h1 className={`text-sm font-extrabold tracking-tight font-heading ${mainTitleColor}`}>Kipurev</h1>
-                <span className="bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 text-[8px] font-black tracking-wider uppercase px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-900">
-                  RMT Perú
-                </span>
-              </div>
-              <p className={`text-[11px] mt-1 ${subtitleColor}`}>
-                Partida doble, libros contables, Kárdex y Liquidación IGV/Renta
-              </p>
-            </div>
+            {/* RUC de la empresa */}
+            <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1 font-bold">RUC: {companyConfig.ruc}</div>
           </div>
 
-          {/* DARK MODE TOGGLE */}
-          <div className={`p-5 rounded-3xl border transition-colors duration-300 space-y-3.5 ${cardBg}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">🌓</span>
-                <span className="text-[10px] font-black uppercase tracking-wider">Modo Oscuro</span>
-              </div>
-              <button 
-                onClick={() => setDarkMode(prev => !prev)}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  darkMode ? 'bg-blue-600' : 'bg-slate-200'
-                }`}
-                title="Alternar Modo Oscuro"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
-                    darkMode ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-
-          {/* TRADUCTOR CONTABLE - MODO SENCILLO */}
-          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 rounded-3xl shadow-sm space-y-3 relative overflow-hidden">
-            <div className="absolute right-[-10px] bottom-[-15px] opacity-15 text-7xl select-none pointer-events-none">🇵🇪</div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">💡</span>
-                <span className="text-[10px] font-black uppercase tracking-wider">Modo Sencillo</span>
-              </div>
-              <button 
-                onClick={() => setModoSencillo(prev => !prev)}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  modoSencillo ? 'bg-emerald-400' : 'bg-white/30'
-                }`}
-                title="Activar Modo Sencillo"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
-                    modoSencillo ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-            <div>
-              <h4 className="font-bold text-xs">Explicaciones en Sencillo</h4>
-              <p className="text-[10px] text-emerald-100/90 mt-1 leading-relaxed">
-                {modoSencillo 
-                  ? '¡Activado! Traducimos las palabras difíciles de impuestos a ejemplos sencillos de tu negocio diario.' 
-                  : 'Desactivado. Se mostrarán términos de contabilidad formal y tecnicismos de la SUNAT.'}
-              </p>
-            </div>
-            {modoSencillo && (
-              <div className="bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/10 text-[9px] text-emerald-50 flex items-center gap-1.5 font-medium">
-                <span className="text-xs">✨</span>
-                <span>¡Perfecto para emprendedores de a pie!</span>
-              </div>
-            )}
-          </div>
-
-          {/* SESSION / CLAVE SOL & PERIOD DETAILS */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-            <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <div className="min-w-0 w-full">
-                <span className="text-slate-400 font-extrabold text-[8px] uppercase tracking-wider block">EMPRESA / RAZÓN SOCIAL</span>
-                <span className="font-sans font-bold text-slate-800 text-[11px] block truncate" title={companyConfig.razonSocial}>
-                  {companyConfig.razonSocial}
-                </span>
-                <span className="font-mono text-[9px] text-slate-400 block truncate">
-                  RUC: {companyConfig.ruc} • SOL: {solUser}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">PERIODO DE TRABAJO</span>
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-2.5 py-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <select 
-                  value={period} 
-                  onChange={(e) => setPeriod(e.target.value)}
-                  className="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-none cursor-pointer w-full"
-                >
-                  {dynamicMonthsList.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider block">ROL DE ACCESO</span>
-              <span className={`inline-flex w-full justify-center items-center gap-1 px-2.5 py-1 rounded-xl text-[9px] font-black tracking-wider uppercase border ${
-                currentUserRole === 'EMPLEADO'
-                  ? 'bg-amber-50 border-amber-200 text-amber-700'
-                  : currentUserRole === 'GERENTE'
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                  : currentUserRole === 'ADMINISTRADOR'
-                  ? 'bg-sky-50 border-sky-200 text-sky-700'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-              }`}>
-                {currentUserRole === 'EMPLEADO' && '💼 Empleado'}
-                {currentUserRole === 'GERENTE' && '👔 Gerente'}
-                {currentUserRole === 'ADMINISTRADOR' && '🔧 Admin'}
-                {currentUserRole === 'CONTADOR' && '🧮 Contador'}
-              </span>
-            </div>
-
-            <button 
-              onClick={handleLogout}
-              className="w-full text-[10.5px] text-red-500 hover:text-white hover:bg-red-500 font-black py-1.5 rounded-xl transition-all flex items-center justify-center gap-1 border border-red-200/50 hover:border-red-500 cursor-pointer"
-              title="Cerrar Sesión Clave SOL"
-            >
-              <LogOut className="w-3 h-3" />
-              <span>Cerrar Sesión SOL</span>
-            </button>
-          </div>
-
-          {/* MONITOREO EN TIEMPO REAL - COLABORADORES REALES */}
-          <div className={`${cardBg} p-5 rounded-3xl space-y-3.5`}>
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Monitoreo en Tiempo Real</span>
-              </div>
-              <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-2 py-0.5 rounded-full uppercase tracking-widest border border-emerald-100 dark:border-emerald-900/30">
-                En Vivo
-              </span>
-            </div>
-
-            <div className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-              <p>🟢 <strong>Operaciones Reales:</strong> Registra las transacciones del personal de la empresa en vivo. Los balances, asientos, kárdex y liquidación de impuestos se recalculan al instante.</p>
-            </div>
-
-            {/* Ticker / Feed list */}
-            {realTimeFeed.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-dashed border-slate-250 dark:border-slate-800">
-                <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">Actividad Reciente del Personal</span>
-                <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1">
-                  {realTimeFeed.slice(0, 4).map(item => (
-                    <div key={item.id} className="text-[9.5px] p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/60 leading-normal flex flex-col gap-0.5">
-                      <div className="flex justify-between items-center text-[8px] text-slate-400">
-                        <span className="font-mono">{item.time}</span>
-                        <span className={`font-black px-1.5 py-0.2 rounded uppercase ${
-                          item.role === 'EMPLEADO' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400' : 
-                          item.role === 'ADMINISTRADOR' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400' : 
-                          item.role === 'GERENTE' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400' : 
-                          'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                        }`}>
-                          {item.role === 'EMPLEADO' ? 'Emp' : item.role === 'ADMINISTRADOR' ? 'Adm' : item.role === 'GERENTE' ? 'Ger' : 'Cont'}
-                        </span>
-                      </div>
-                      <span className="font-bold text-slate-700 dark:text-slate-200 block truncate">{item.usuario.split(' ')[0]}: {item.descripcion}</span>
-                      <div className="flex justify-between items-center mt-1">
-                        <span className="font-mono text-slate-400">{item.documento}</span>
-                        <span className={`font-bold font-mono ${item.tipo === 'VENTA' ? 'text-blue-600 dark:text-blue-400' : 'text-red-500 dark:text-red-400'}`}>
-                          {item.tipo === 'VENTA' ? '+' : '-'}S/. {item.monto.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* CONFIGURACIÓN MYPE TRAMO DE INGRESOS (UIT) */}
-          {regimen === 'RMT' && (
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-3 animate-fadeIn">
-              <span className="text-[9px] font-black text-indigo-600 uppercase tracking-wider block">Tramo de Ingresos Anuales (UIT)</span>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-[10.5px]">
-                  <span className="font-bold text-slate-700">Límite Proyectado:</span>
-                  <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
-                    {projectedIncomeUIT} UIT
-                  </span>
-                </div>
-                
-                <input 
-                  type="range"
-                  min="50"
-                  max="1700"
-                  step="50"
-                  value={projectedIncomeUIT}
-                  onChange={(e) => setProjectedIncomeUIT(Number(e.target.value))}
-                  className="w-full accent-indigo-600 h-1.5 bg-slate-100 rounded-lg cursor-pointer"
-                />
-
-                <div className="flex justify-between text-[8px] font-mono text-slate-400">
-                  <span>50 UIT</span>
-                  <span>300 UIT</span>
-                  <span>500 UIT</span>
-                  <span>1700 UIT</span>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 p-2.5 rounded-2xl text-[9.5px] space-y-1.5 border border-slate-100">
-                <div className="flex justify-between">
-                  <span className="font-bold text-slate-600">Soles Proyectados:</span>
-                  <span className="font-mono font-bold text-slate-800">S/. {(projectedIncomeUIT * 5500).toLocaleString('es-PE')}</span>
-                </div>
-                <div className="pt-1.5 border-t border-slate-200/60 text-slate-500 leading-normal">
-                  {projectedIncomeUIT <= 300 ? (
-                    <div>
-                      <span className="text-emerald-600 font-bold">🟢 Tramo 1 (Hasta 300 UIT)</span>
-                      <p className="mt-1">Tasas: Renta 1.0% mensual. Libros obligatorios:</p>
-                      <div className="grid grid-cols-1 gap-0.5 mt-1 font-semibold text-slate-700">
-                        <span>• Registro de Ventas</span>
-                        <span>• Registro de Compras</span>
-                        <span>• Libro Diario Simplificado (LDFS)</span>
-                      </div>
-                    </div>
-                  ) : projectedIncomeUIT <= 500 ? (
-                    <div>
-                      <span className="text-amber-600 font-bold">🟡 Tramo 2 (300 a 500 UIT)</span>
-                      <p className="mt-1">Tasas: Renta 1.5% mensual. Libros obligatorios:</p>
-                      <div className="grid grid-cols-1 gap-0.5 mt-1 font-semibold text-slate-700">
-                        <span>• Registro de Ventas</span>
-                        <span>• Registro de Compras</span>
-                        <span>• Libro Diario Completo</span>
-                        <span>• Libro Mayor</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <span className="text-red-600 font-bold">🔴 Tramo 3 (500 a 1700 UIT)</span>
-                      <p className="mt-1">Tasas: Renta 1.5% mensual. Libros obligatorios:</p>
-                      <div className="grid grid-cols-1 gap-0.5 mt-1 font-semibold text-slate-700">
-                        <span>• Registro de Ventas</span>
-                        <span>• Registro de Compras</span>
-                        <span>• Libro Diario Completo</span>
-                        <span>• Libro Mayor</span>
-                        <span>• Libro de Inventarios y Balances</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SIDEBAR NAVIGATION BUTTONS */}
-          <div className={`p-3.5 rounded-3xl border transition-colors duration-300 space-y-1.5 select-none ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'}`}>
-            <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block px-2.5 mb-1">
-              {modoSencillo ? "MENÚ DEL NEGOCIO" : "NAVEGACIÓN"}
+          {/* Rol actual de acceso */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">ROL ACTUAL</span>
+            <span className={`inline-flex w-full justify-center items-center gap-1 px-2.5 py-1 rounded-xl text-[9.5px] font-bold tracking-wider uppercase border ${
+              currentUserRole === 'EMPLEADO'
+                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60 text-amber-700 dark:text-amber-400'
+                : currentUserRole === 'GERENTE'
+                ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/60 text-indigo-700 dark:text-indigo-400'
+                : currentUserRole === 'ADMINISTRADOR'
+                ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-900/60 text-sky-700 dark:text-sky-400'
+                : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-400'
+            }`}>
+              {currentUserRole === 'EMPLEADO' && '💼 Empleado'}
+              {currentUserRole === 'GERENTE' && '👔 Gerente'}
+              {currentUserRole === 'ADMINISTRADOR' && '🔧 Admin'}
+              {currentUserRole === 'CONTADOR' && '🧮 Contador'}
             </span>
+          </div>
 
+          {/* Modo de Interfaz Switcher */}
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">MODO DE INTERFAZ</span>
             <button
-              onClick={() => {
-                setModuloActivo('menu');
-              }}
-              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                moduloActivo === 'menu'
-                  ? darkMode 
-                    ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs'
-                    : 'bg-indigo-50 border-indigo-500/30 text-indigo-950 ring-2 ring-indigo-500/5 shadow-xs'
-                  : darkMode
-                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
+              onClick={() => setModoSencillo(prev => !prev)}
+              className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl text-[9.5px] font-black tracking-wider uppercase border transition-all cursor-pointer ${
+                modoSencillo
+                  ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60 text-amber-700 dark:text-amber-400 hover:bg-amber-100/40'
+                  : 'bg-indigo-50/60 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900/60 text-indigo-700 dark:text-indigo-450 hover:bg-indigo-100/40'
               }`}
+              title="Alternar entre Modo Sencillo y Modo Factura / Tributario"
             >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-indigo-650 text-white shadow-xs">
-                🏠
-              </div>
-              <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'menu' ? '' : labelColor}`}>
-                  Menú Principal (Hub)
-                </h3>
-                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                  Vista simplificada de módulos
-                </span>
-              </div>
+              <span>{modoSencillo ? "📁 Modo Sencillo" : "🧾 Modo Factura / Trib."}</span>
+              <span className="text-[8px] bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.2 rounded font-black font-sans">
+                Cambiar
+              </span>
             </button>
+          </div>
+
+          {/* Menú de navegación vertical */}
+          <nav className="space-y-1 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1.5 px-1">NAVEGACIÓN</span>
             
             <button
               onClick={() => {
+                setActiveTab('Inicio');
+                setModuloActivo('menu');
+              }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'Inicio'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100/10'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span>🏠</span>
+              <span>Inicio</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('SIRE');
                 setModuloActivo('libros');
                 setSelectedDiarioTab('ventas');
               }}
-              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                moduloActivo === 'libros' && (selectedDiarioTab === 'ventas' || selectedDiarioTab === 'compras')
-                  ? darkMode 
-                    ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-100 ring-2 ring-emerald-500/20 shadow-xs'
-                    : 'bg-emerald-50 border-emerald-500/30 text-emerald-950 ring-2 ring-emerald-500/5 shadow-xs'
-                  : darkMode
-                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'SIRE'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100/10'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
               }`}
             >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-emerald-500 text-white shadow-xs">
-                💼
-              </div>
-              <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'libros' && (selectedDiarioTab === 'ventas' || selectedDiarioTab === 'compras') ? '' : labelColor}`}>
-                  {modoSencillo ? "Mis Ventas, Compras y Caja" : "Operaciones & Caja"}
-                </h3>
-                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                  {modoSencillo ? "Anota facturas, boletas, cobros y pagos" : "Comprobantes y asientos"}
-                </span>
-              </div>
+              <span>📖</span>
+              <span>SIRE</span>
             </button>
 
             <button
               onClick={() => {
-                setModuloActivo('libros');
-                setSelectedDiarioTab('catalogo');
-              }}
-              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                moduloActivo === 'libros' && selectedDiarioTab === 'catalogo'
-                  ? darkMode
-                    ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs'
-                    : 'bg-indigo-50 border-indigo-500/30 text-indigo-950 ring-2 ring-indigo-500/5 shadow-xs'
-                  : darkMode
-                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
-              }`}
-            >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-indigo-500 text-white shadow-xs">
-                🏷️
-              </div>
-              <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'libros' && selectedDiarioTab === 'catalogo' ? '' : labelColor}`}>
-                  {modoSencillo ? "Lista de mis Productos" : "Catálogo Comercial"}
-                </h3>
-                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                  {modoSencillo ? "Precios, qué vendes y cuántos quedan" : "Precios y stock inicial"}
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => {
-                setModuloActivo('libros');
-                setSelectedDiarioTab('diario');
-              }}
-              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                moduloActivo === 'libros' && selectedDiarioTab !== 'ventas' && selectedDiarioTab !== 'compras' && selectedDiarioTab !== 'catalogo'
-                  ? darkMode
-                    ? 'bg-slate-800 border-slate-600 text-white ring-2 ring-slate-500/20 shadow-xs'
-                    : 'bg-slate-100 border-slate-600/30 text-slate-950 ring-2 ring-slate-500/5 shadow-xs'
-                  : darkMode
-                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
-              }`}
-            >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-slate-850 text-white shadow-xs">
-                📖
-              </div>
-              <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'libros' && selectedDiarioTab !== 'ventas' && selectedDiarioTab !== 'compras' && selectedDiarioTab !== 'catalogo' ? '' : labelColor}`}>
-                  {modoSencillo ? "Mis Libros para SUNAT" : "Libros y Reportes"}
-                </h3>
-                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                  {modoSencillo ? "Tus reportes listos en sencillo" : "Diario, Mayor y Balance"}
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => {
+                setActiveTab('Impuestos');
                 setModuloActivo('impuestos');
               }}
-              className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                moduloActivo === 'impuestos'
-                  ? darkMode
-                    ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-100 ring-2 ring-indigo-500/20 shadow-xs'
-                    : 'bg-indigo-50 border-indigo-500/30 text-indigo-950 ring-2 ring-indigo-500/5 shadow-xs'
-                  : darkMode
-                    ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                    : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'Impuestos'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100/10'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
               }`}
             >
-              <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-indigo-600 text-white shadow-xs">
-                🏛️
-              </div>
-              <div className="min-w-0">
-                <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'impuestos' ? '' : labelColor}`}>
-                  {modoSencillo ? "Cálculo de Impuestos" : "Liquidación SUNAT"}
-                </h3>
-                <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                  {modoSencillo ? "Saber cuánto se paga este mes" : "Impuestos IGV/Renta"}
-                </span>
-              </div>
+              <span>⚖️</span>
+              <span>Impuestos</span>
             </button>
 
-            {currentUserRole === 'GERENTE' && (
-              <button
-                onClick={() => {
-                  setModuloActivo('configuracion');
-                }}
-                className={`w-full flex items-center gap-3 p-2 rounded-xl border transition-all text-left cursor-pointer ${
-                  moduloActivo === 'configuracion'
-                    ? darkMode
-                      ? 'bg-slate-800 border-slate-600 text-white ring-2 ring-slate-500/20 shadow-xs'
-                      : 'bg-slate-100 border-slate-600/30 text-slate-950 ring-2 ring-slate-500/5 shadow-xs'
-                    : darkMode
-                      ? 'bg-transparent hover:bg-slate-800 border-transparent text-slate-400 hover:text-white'
-                      : 'bg-white hover:bg-slate-50 border-transparent text-slate-650 hover:text-slate-900'
-                }`}
-              >
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs bg-slate-600 text-white shadow-xs">
-                  ⚙️
-                </div>
-                <div className="min-w-0">
-                  <h3 className={`font-bold text-[11px] leading-tight ${moduloActivo === 'configuracion' ? '' : labelColor}`}>
-                    {modoSencillo ? "Configuración Empresa" : "Configuración Empresa"}
-                  </h3>
-                  <span className="text-[8.5px] font-medium text-slate-400 dark:text-slate-500 block">
-                    {modoSencillo ? "Datos de la empresa para producción" : "Datos reales y RUC"}
-                  </span>
-                </div>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setActiveTab('Simulador');
+                setModuloActivo('simulador');
+              }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'Simulador'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100/10'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span>💡</span>
+              <span>Simulador</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('Configuracion');
+                setModuloActivo('configuracion');
+              }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                activeTab === 'Configuracion'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100/10'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+              }`}
+            >
+              <span>⚙️</span>
+              <span>Configuración</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* BOTTOM BLOCK: CERRAR SESIÓN */}
+        <div className="space-y-3">
+          {/* Dark Mode toggle embedded compactly */}
+          <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
+            <span>Modo Oscuro</span>
+            <button 
+              onClick={() => setDarkMode(prev => !prev)}
+              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                darkMode ? 'bg-indigo-600' : 'bg-slate-200'
+              }`}
+              title="Alternar Modo Oscuro"
+            >
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ${darkMode ? 'translate-x-4' : 'translate-x-0'}`} />
+            </button>
           </div>
 
+          <button 
+            onClick={handleLogout}
+            className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/25 transition-all flex items-center gap-2 cursor-pointer border border-transparent hover:border-red-150/10"
+            title="Cerrar Sesión SOL"
+          >
+            <span>🚪</span>
+            <span>Cerrar Sesión</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ÁREA PRINCIPAL (DERECHA, scroll independiente) */}
+      <div className="flex-1 h-screen overflow-y-auto p-6 space-y-6">
+
+        {/* TOP HEADER COMPONENT */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-5 border-b border-slate-200/60 dark:border-slate-800/80 gap-4">
+          <div>
+            <h2 className="font-heading font-black text-lg text-slate-900 dark:text-white uppercase tracking-tight">
+              {activeTab === 'Inicio' && 'Dashboard Principal'}
+              {activeTab === 'SIRE' && 'Libros Electrónicos SIRE'}
+              {activeTab === 'Impuestos' && 'Cálculo de Impuestos MYPE'}
+              {activeTab === 'Simulador' && 'Simulador de Solvencia Financiera'}
+              {activeTab === 'Configuracion' && 'Configuración de Empresa & Empleados'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {companyConfig.razonSocial} • RUC {companyConfig.ruc}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Period selector */}
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-3 py-1.5 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Periodo SOL:</span>
+              <select 
+                value={period} 
+                onChange={(e) => setPeriod(e.target.value)}
+                className="bg-transparent text-xs font-black text-indigo-650 dark:text-indigo-400 focus:outline-none cursor-pointer"
+              >
+                {dynamicMonthsList.map(m => (
+                  <option key={m.value} value={m.value} className="dark:bg-slate-900">{m.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* RIGHT MAIN WORKSPACE */}
-        <div className="lg:col-span-9 space-y-6">
+        <div className="space-y-6">
 
           {/* HUB DE MÓDULOS (VISTA MENÚ PRINCIPAL) */}
           {moduloActivo === 'menu' ? (
@@ -2784,6 +2539,35 @@ export default function App() {
                   <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-purple-600 dark:text-purple-400 font-mono uppercase">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
                     PCGE Consulta Integrada
+                  </div>
+                </button>
+
+                {/* TARJETA 5: Configuración Empresa & Empleados */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('Configuracion');
+                    setModuloActivo('configuracion');
+                  }}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-slate-400 hover:shadow-lg hover:scale-[1.01] md:col-span-2 lg:col-span-1`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-2xl shadow-xs">
+                      ⚙️
+                    </div>
+                    <span className="text-[10px] font-black tracking-wider bg-slate-50 dark:bg-slate-850 text-slate-700 dark:text-slate-300 uppercase px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">
+                      Módulo 5
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
+                    Configuración de Empresa & Empleados
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${subtitleColor}`}>
+                    Personalice la razón social, RUC, régimen tributario, dirección legal, logotipo de comprobantes, y administre los usuarios y empleados con acceso SOL autorizados.
+                  </p>
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 font-mono uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                    Gestionar Nombre, RUC y Equipo
                   </div>
                 </button>
               </div>
@@ -3619,17 +3403,6 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => setSelectedDiarioTab('inventario')}
-                      className={`pb-2.5 px-3 sm:px-4 text-[10.5px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-                        selectedDiarioTab === 'inventario'
-                          ? 'border-indigo-600 text-indigo-750'
-                          : 'border-transparent text-slate-400 hover:text-slate-650'
-                      }`}
-                    >
-                      📦 Kárdex (Reg. de Inventario)
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setSelectedDiarioTab('catalogo')}
                       className={`pb-2.5 px-3 sm:px-4 text-[10.5px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
                         selectedDiarioTab === 'catalogo'
@@ -3664,6 +3437,51 @@ export default function App() {
                       </button>
                     </div>
 
+                    {/* Document Filter Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-850">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider ml-1">Filtrar por Documento:</span>
+                        <div className="flex bg-slate-200/60 dark:bg-slate-900 rounded-xl p-1 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setVentasFiltroDoc('TODOS')}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                              ventasFiltroDoc === 'TODOS'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            📁 Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVentasFiltroDoc('FACTURAS')}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              ventasFiltroDoc === 'FACTURAS'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            🧾 Facturas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVentasFiltroDoc('BOLETAS')}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              ventasFiltroDoc === 'BOLETAS'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            🎫 Boletas
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-[10.5px] font-black font-sans text-slate-500 mr-1.5">
+                        Modo Activo: <span className="text-indigo-600 dark:text-indigo-400 font-extrabold uppercase">{ventasFiltroDoc === 'TODOS' ? 'Todos los Comprobantes' : ventasFiltroDoc === 'FACTURAS' ? 'Modo Factura' : 'Modo Boleta'}</span>
+                      </div>
+                    </div>
+
                     <div className="overflow-x-auto border border-slate-250/60 rounded-2xl bg-white">
                       <table className="w-full text-left border-collapse">
                         <thead>
@@ -3676,15 +3494,21 @@ export default function App() {
                             <th className="py-3 px-3 text-right">{modoSencillo ? "Impuesto IGV (18%)" : "IGV (18%)"}</th>
                             <th className="py-3 px-3 text-right">{modoSencillo ? "Cobro Total" : "Total Soles"}</th>
                             <th className="py-3 px-2 text-center">Estado</th>
+                            <th className="py-3 px-2 text-center">Acciones</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
                           {(() => {
-                            const sales = filteredTransactions.filter(t => t.tipo === 'VENTA');
+                            let sales = filteredTransactions.filter(t => t.tipo === 'VENTA');
+                            if (ventasFiltroDoc === 'FACTURAS') {
+                              sales = sales.filter(s => s.documento.toUpperCase().startsWith('F') || s.documento.toLowerCase().includes('factura'));
+                            } else if (ventasFiltroDoc === 'BOLETAS') {
+                              sales = sales.filter(s => s.documento.toUpperCase().startsWith('B') || s.documento.toLowerCase().includes('boleta'));
+                            }
                             if (sales.length === 0) {
                               return (
                                 <tr>
-                                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">No hay registros de ventas para este periodo.</td>
+                                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">No hay registros de ventas para este periodo.</td>
                                 </tr>
                               );
                             }
@@ -3715,6 +3539,16 @@ export default function App() {
                                           {s.isExtornado ? 'Anulado' : 'Emitido'}
                                         </span>
                                       </td>
+                                      <td className="py-3 px-2 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedVentaComprobante(s)}
+                                          className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 mx-auto cursor-pointer"
+                                          title="Ver Comprobante Electrónico (SUNAT PDF)"
+                                        >
+                                          📄 Comprobante
+                                        </button>
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -3723,6 +3557,7 @@ export default function App() {
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalBase.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalIgv.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-emerald-700 text-sm">S/. {totalSol.toFixed(2)}</td>
+                                  <td></td>
                                   <td></td>
                                 </tr>
                               </>
@@ -3756,10 +3591,55 @@ export default function App() {
                       </button>
                     </div>
 
+                    {/* Document Filter Bar for Compras */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-850">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider ml-1">Filtrar por Documento:</span>
+                        <div className="flex bg-slate-200/60 dark:bg-slate-900 rounded-xl p-1 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setComprasFiltroDoc('TODOS')}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                              comprasFiltroDoc === 'TODOS'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            📁 Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComprasFiltroDoc('FACTURAS')}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              comprasFiltroDoc === 'FACTURAS'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            🧾 Facturas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComprasFiltroDoc('BOLETAS')}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              comprasFiltroDoc === 'BOLETAS'
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-300/40 dark:hover:bg-slate-800/60'
+                            }`}
+                          >
+                            🎫 Boletas
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-[10.5px] font-black font-sans text-slate-500 mr-1.5">
+                        Modo Activo: <span className="text-indigo-600 dark:text-indigo-400 font-extrabold uppercase">{comprasFiltroDoc === 'TODOS' ? 'Todos los Comprobantes' : comprasFiltroDoc === 'FACTURAS' ? 'Modo Factura' : 'Modo Boleta'}</span>
+                      </div>
+                    </div>
+
                     <div className="overflow-x-auto border border-slate-250/60 rounded-2xl bg-white">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-black tracking-wider text-slate-400 select-none">
+                          <tr className="bg-slate-50/50 border-b border-slate-200 text-[10px] uppercase font-black tracking-wider text-slate-400 select-none">
                             <th className="py-3 px-3">{modoSencillo ? "Fecha de Compra" : "F. Emisión"}</th>
                             <th className="py-3 px-3">{modoSencillo ? "Factura Recibida" : "Comprobante"}</th>
                             <th className="py-3 px-3">{modoSencillo ? "Proveedor (Quién te vende)" : "Proveedor / Emisor"}</th>
@@ -3772,7 +3652,12 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
                           {(() => {
-                            const purchases = filteredTransactions.filter(t => t.tipo === 'COMPRA');
+                            let purchases = filteredTransactions.filter(t => t.tipo === 'COMPRA');
+                            if (comprasFiltroDoc === 'FACTURAS') {
+                              purchases = purchases.filter(s => s.documento.toUpperCase().startsWith('F') || s.documento.toLowerCase().includes('factura'));
+                            } else if (comprasFiltroDoc === 'BOLETAS') {
+                              purchases = purchases.filter(s => s.documento.toUpperCase().startsWith('B') || s.documento.toLowerCase().includes('boleta'));
+                            }
                             if (purchases.length === 0) {
                               return (
                                 <tr>
@@ -5024,7 +4909,7 @@ export default function App() {
                 </>
               )}
 
-              {selectedDiarioTab === 'inventario' && (
+              {false && (
                   /* INVENTARIO DE MERCADERÍAS & KÁRDEX SUNAT 13.1 PANEL */
                   <div className="space-y-5">
                     <div className="bg-indigo-50/50 border border-indigo-100 p-4.5 rounded-2xl mb-2 animate-fadeIn">
@@ -5522,7 +5407,7 @@ export default function App() {
                                     : 'bg-slate-50 border-slate-200 text-slate-650 hover:bg-slate-100'
                                 }`}
                               >
-                                📦 Físico (Kárdex)
+                                📦 Producto Físico
                               </button>
                               <button
                                 type="button"
@@ -5637,13 +5522,13 @@ export default function App() {
                       </div>
 
                       {/* RIGHT COLUMN: CATALOG LIST */}
-                      <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4">
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-slate-100 pb-3 gap-2">
+                      <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-slate-100 dark:border-slate-850 pb-3 gap-2">
                           <div>
-                            <h3 className="font-heading font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <h3 className="font-heading font-black text-xs text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
                               🏷️ Catálogo de Productos Registrados
                             </h3>
-                            <p className="text-[10px] text-slate-400 mt-1">Sube precios, baja precios o elimina productos del catálogo comercial.</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Sube precios, baja precios o elimina productos del catálogo comercial.</p>
                           </div>
                           <button
                             type="button"
@@ -5652,7 +5537,7 @@ export default function App() {
                                 setCatalogItems(MOCK_CATALOG);
                               }
                             }}
-                            className="text-[10px] text-slate-400 hover:text-rose-650 font-bold border border-slate-200 hover:border-rose-200 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
+                            className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-rose-650 font-bold border border-slate-200 dark:border-slate-800 hover:border-rose-200 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
                           >
                             🔄 Reiniciar Catálogo
                           </button>
@@ -5664,17 +5549,21 @@ export default function App() {
                             return (
                               <div 
                                 key={prod.id} 
-                                className="border border-slate-200/75 rounded-2xl p-4 space-y-3 hover:border-slate-300 hover:bg-slate-50/30 transition-all flex flex-col justify-between"
+                                className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/30 dark:hover:bg-slate-950/40 transition-all flex flex-col justify-between"
                               >
                                 <div className="space-y-1.5">
                                   <div className="flex justify-between items-start">
                                     <span className={`text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
-                                      prod.isPhysical ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'
+                                      prod.isPhysical 
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-350' 
+                                        : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-350'
                                     }`}>
                                       {prod.isPhysical ? `📦 Físico • ${prod.sku}` : '💼 Servicio / Concepto'}
                                     </span>
                                     <span className={`text-[9.5px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider font-mono ${
-                                      prod.tipo === 'VENTA' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'
+                                      prod.tipo === 'VENTA' 
+                                        ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300' 
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                                     }`}>
                                       {prod.tipo}
                                     </span>
@@ -5686,7 +5575,7 @@ export default function App() {
                                         type="text"
                                         value={editingProductDesc}
                                         onChange={(e) => setEditingProductDesc(e.target.value)}
-                                        className="w-full bg-white border border-indigo-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-800"
+                                        className="w-full bg-white dark:bg-slate-950 border border-indigo-300 dark:border-slate-800 rounded-lg py-1 px-2 text-xs font-bold text-slate-800 dark:text-slate-100"
                                       />
                                       <div className="flex gap-2 items-center">
                                         <span className="text-xs font-bold text-slate-400 font-mono">S/.</span>
@@ -5695,37 +5584,37 @@ export default function App() {
                                           step="0.01"
                                           value={editingProductPrice}
                                           onChange={(e) => setEditingProductPrice(e.target.value)}
-                                          className="w-24 bg-white border border-indigo-300 rounded-lg py-1 px-2 text-xs font-bold text-slate-800 font-mono"
+                                          className="w-24 bg-white dark:bg-slate-950 border border-indigo-300 dark:border-slate-800 rounded-lg py-1 px-2 text-xs font-bold text-slate-800 dark:text-slate-100 font-mono"
                                         />
                                       </div>
                                     </div>
                                   ) : (
                                     <>
-                                      <h4 className="font-heading font-extrabold text-sm text-slate-800">{prod.desc}</h4>
+                                      <h4 className="font-heading font-extrabold text-sm text-slate-800 dark:text-slate-200">{prod.desc}</h4>
                                       <div className="flex items-baseline gap-1 pt-1">
                                         <span className="text-[10px] text-slate-400 font-bold">Precio Unitario:</span>
-                                        <span className="text-sm font-black text-slate-900 font-mono">S/. {prod.precio.toFixed(2)}</span>
+                                        <span className="text-sm font-black text-slate-900 dark:text-slate-100 font-mono">S/. {prod.precio.toFixed(2)}</span>
                                       </div>
                                     </>
                                   )}
 
                                   {prod.isPhysical && (
-                                    <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-50 border border-slate-100 p-2 rounded-xl text-slate-500 font-mono">
-                                      <div>📦 Medida: <span className="font-bold text-slate-700">{prod.unidad}</span></div>
-                                      <div>📈 Stock Ini: <span className="font-bold text-slate-700">{prod.stockInicial}</span></div>
-                                      <div className="col-span-2">💰 Costo Unit. Ini: <span className="font-bold text-slate-700">S/. {(prod.costoInicial ?? 0).toFixed(2)}</span></div>
+                                    <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-850 p-2 rounded-xl text-slate-500 dark:text-slate-400 font-mono">
+                                      <div>📦 Medida: <span className="font-bold text-slate-700 dark:text-slate-300">{prod.unidad}</span></div>
+                                      <div>📈 Stock Ini: <span className="font-bold text-slate-700 dark:text-slate-300">{prod.stockInicial}</span></div>
+                                      <div className="col-span-2">💰 Costo Unit. Ini: <span className="font-bold text-slate-700 dark:text-slate-300">S/. {(prod.costoInicial ?? 0).toFixed(2)}</span></div>
                                     </div>
                                   )}
                                 </div>
 
                                 {/* ACTIONS ROW */}
-                                <div className="border-t border-slate-100 pt-3 flex flex-wrap justify-between items-center gap-2">
+                                <div className="border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-wrap justify-between items-center gap-2">
                                   {isEditing ? (
                                     <div className="flex gap-2 w-full justify-end">
                                       <button
                                         type="button"
                                         onClick={() => setEditingProductId(null)}
-                                        className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
+                                        className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
                                       >
                                         Cancelar
                                       </button>
@@ -5763,7 +5652,7 @@ export default function App() {
                                               c.id === prod.id ? { ...c, precio: Number((c.precio + 10).toFixed(2)) } : c
                                             ));
                                           }}
-                                          className="text-[10.5px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-1 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5"
+                                          className="text-[10.5px] bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/65 text-emerald-700 dark:text-emerald-400 font-bold py-1 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5"
                                         >
                                           📈 +S/.10
                                         </button>
@@ -5776,7 +5665,7 @@ export default function App() {
                                               c.id === prod.id ? { ...c, precio: Math.max(1, Number((c.precio - 10).toFixed(2))) } : c
                                             ));
                                           }}
-                                          className="text-[10.5px] bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold py-1 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5"
+                                          className="text-[10.5px] bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/65 text-rose-700 dark:text-rose-400 font-bold py-1 px-2 rounded-lg transition-colors cursor-pointer flex items-center gap-0.5"
                                         >
                                           📉 -S/.10
                                         </button>
@@ -5791,7 +5680,7 @@ export default function App() {
                                             setEditingProductPrice(prod.precio.toString());
                                             setEditingProductDesc(prod.desc);
                                           }}
-                                          className="text-[10px] font-bold border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
+                                          className="text-[10px] font-bold border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-950 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
                                         >
                                           Editar
                                         </button>
@@ -5804,7 +5693,7 @@ export default function App() {
                                               setCatalogItems((prev: any) => prev.filter((c: any) => c.id !== prod.id));
                                             }
                                           }}
-                                          className="text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
+                                          className="text-[10px] font-bold bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/65 text-rose-600 dark:text-rose-400 py-1 px-2.5 rounded-lg transition-colors cursor-pointer"
                                         >
                                           Eliminar
                                         </button>
@@ -6029,7 +5918,7 @@ export default function App() {
       {/* HIGH FIDELITY MODAL OVERLAY FOR OPERATIONS */}
       {activeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto font-sans">
-          <div className="bg-white rounded-3xl overflow-hidden shadow-2xl max-w-3xl w-full flex flex-col max-h-[90vh]">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl max-w-3xl w-full flex flex-col max-h-[90vh] border border-transparent dark:border-slate-800">
             
             {/* Modal Header */}
             <div className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center">
@@ -6085,53 +5974,53 @@ export default function App() {
               <form onSubmit={handleModalSave} className="space-y-6">
                 
                 {/* 1. DATOS PRINCIPALES DE LA OPERACIÓN */}
-                <div className="space-y-3.5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">
+                <div className="space-y-3.5 bg-white dark:bg-slate-900/90 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                  <h4 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-850 pb-2">
                     1. DATOS PRINCIPALES DE LA OPERACIÓN
                   </h4>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* FECHA DE OPERACIÓN */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Fecha de Operación</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Fecha de Operación</label>
                       <input 
                         type="date" 
                         value={mFecha}
                         onChange={(e) => setMFecha(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100"
                         required
                       />
                     </div>
 
                     {/* TIPO DE COMPROBANTE */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tipo de Comprobante</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Tipo de Comprobante</label>
                       <select 
                         value={mTipoComprobante}
                         onChange={(e) => setMTipoComprobante(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                       >
                         {activeModal === 'VENTA' && (
                           <>
-                            <option value="Factura">Factura Electrónica</option>
-                            <option value="Boleta">Boleta de Venta Electrónica</option>
-                            <option value="Nota de Crédito">Nota de Crédito</option>
-                            <option value="Nota de Débito">Nota de Débito</option>
+                            <option value="Factura" className="dark:bg-slate-900">Factura Electrónica</option>
+                            <option value="Boleta" className="dark:bg-slate-900">Boleta de Venta Electrónica</option>
+                            <option value="Nota de Crédito" className="dark:bg-slate-900">Nota de Crédito</option>
+                            <option value="Nota de Débito" className="dark:bg-slate-900">Nota de Débito</option>
                           </>
                         )}
                         {activeModal === 'COMPRA' && (
                           <>
-                            <option value="Factura">Factura de Proveedor</option>
-                            <option value="Boleta">Boleta de Venta</option>
-                            <option value="Recibo de Honorarios">Recibo por Honorarios (10% Ret.)</option>
-                            <option value="Declaración Importación">Declaración Aduanera (DAM)</option>
+                            <option value="Factura" className="dark:bg-slate-900">Factura de Proveedor</option>
+                            <option value="Boleta" className="dark:bg-slate-900">Boleta de Venta</option>
+                            <option value="Recibo de Honorarios" className="dark:bg-slate-900">Recibo por Honorarios (10% Ret.)</option>
+                            <option value="Declaración Importación" className="dark:bg-slate-900">Declaración Aduanera (DAM)</option>
                           </>
                         )}
                         {(activeModal === 'COBRO' || activeModal === 'PAGO' || activeModal === 'TRANSFERENCIA') && (
                           <>
-                            <option value="Recibo de Caja">Recibo de Caja</option>
-                            <option value="Voucher Bancario">Voucher de Depósito / Transferencia</option>
-                            <option value="Nota de Débito">Nota de Cargo / Nota de Débito</option>
+                            <option value="Recibo de Caja" className="dark:bg-slate-900">Recibo de Caja</option>
+                            <option value="Voucher Bancario" className="dark:bg-slate-900">Voucher de Depósito / Transferencia</option>
+                            <option value="Nota de Débito" className="dark:bg-slate-900">Nota de Cargo / Nota de Débito</option>
                           </>
                         )}
                       </select>
@@ -6139,13 +6028,13 @@ export default function App() {
 
                     {/* SERIE Y NÚMERO */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Serie y Número</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Serie y Número</label>
                       <input 
                         type="text" 
                         placeholder={activeModal === 'VENTA' ? 'F001-0000101' : 'FT01-1245'}
                         value={mSerieNumero}
                         onChange={(e) => setMSerieNumero(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800 dark:text-slate-100"
                         required
                       />
                     </div>
@@ -6155,23 +6044,23 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1.5">
                       {/* RUC / DNI */}
                       <div className="md:col-span-4">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                           {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'RUC / DNI Cliente' : 'RUC / DNI Proveedor'}
                         </label>
                         <input 
-                          type="text" 
+                           type="text" 
                           placeholder="Ej. 20110000101"
                           maxLength={11}
                           value={mRuc}
                           onChange={(e) => setMRuc(e.target.value.replace(/\D/g, ''))}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800 dark:text-slate-100"
                           required
                         />
                       </div>
 
                       {/* CLIENTE / RAZÓN SOCIAL */}
                       <div className="md:col-span-8">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                           {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'Cliente / Razón Social' : 'Proveedor / Razón Social'}
                         </label>
                         <input 
@@ -6179,7 +6068,7 @@ export default function App() {
                           placeholder="Nombre o Razón Social Comercial"
                           value={mClienteProveedor}
                           onChange={(e) => setMClienteProveedor(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100"
                           required
                         />
                       </div>
@@ -6188,8 +6077,8 @@ export default function App() {
                 </div>
 
                 {/* 2. DETALLE DE LA TRANSACCIÓN Y BASE IMPONIBLE */}
-                <div className="space-y-3.5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">
+                <div className="space-y-3.5 bg-white dark:bg-slate-900/90 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                  <h4 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-850 pb-2">
                     2. DETALLE DE LA TRANSACCIÓN Y BASE IMPONIBLE
                   </h4>
                   
@@ -6199,7 +6088,7 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                         {/* PRODUCT/SERVICE SELECTION */}
                         <div className="md:col-span-6">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                             {activeModal === 'VENTA' ? 'Producto o Servicio Vendido' : 'Bien o Servicio Comprado'}
                           </label>
                           <input
@@ -6216,7 +6105,7 @@ export default function App() {
                               }
                             }}
                             list="catalog-suggestions"
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800"
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100"
                             required
                           />
                           <datalist id="catalog-suggestions">
@@ -6231,26 +6120,26 @@ export default function App() {
 
                         {/* QUANTITY */}
                         <div className="md:col-span-3">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Cantidad</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Cantidad</label>
                           <input 
                             type="number" 
                             min={1}
                             value={mCantidad}
                             onChange={(e) => setMCantidad(parseInt(e.target.value) || 1)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 font-mono text-center"
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 font-mono text-center"
                             required
                           />
                         </div>
 
                         {/* UNIT PRICE */}
                         <div className="md:col-span-3">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Precio Unitario (S/.)</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Precio Unitario (S/.)</label>
                           <input 
                             type="number" 
                             step="0.01"
                             value={mPrecioUnitario}
                             onChange={(e) => setMPrecioUnitario(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 font-mono text-right"
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 font-mono text-right"
                             required
                           />
                         </div>
@@ -6259,27 +6148,27 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1.5">
                         {/* IGV TAX TYPE */}
                         <div className="md:col-span-5">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tipo de afectación al IGV</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Tipo de afectación al IGV</label>
                           <select
                             value={mAfectacionIGV}
                             onChange={(e) => setMAfectacionIGV(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer text-[11px]"
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer text-[11px]"
                           >
-                            <option value="Gravado (Afecto a IGV 18%)">Gravado (Afecto a IGV 18%)</option>
-                            <option value="Exonerado (Sin IGV)">Exonerado (Art. 19 de la Ley del IGV)</option>
-                            <option value="Inafecto (Sin IGV)">Inafecto (Fuera del ámbito del impuesto)</option>
+                            <option value="Gravado (Afecto a IGV 18%)" className="dark:bg-slate-900">Gravado (Afecto a IGV 18%)</option>
+                            <option value="Exonerado (Sin IGV)" className="dark:bg-slate-900">Exonerado (Art. 19 de la Ley del IGV)</option>
+                            <option value="Inafecto (Sin IGV)" className="dark:bg-slate-900">Inafecto (Fuera del ámbito del impuesto)</option>
                           </select>
                         </div>
 
                         {/* GENERAL GLOSA DESCRIPTION */}
                         <div className="md:col-span-7">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Descripción General / Glosa</label>
+                          <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Descripción General / Glosa</label>
                           <input 
                             type="text" 
                             placeholder="Glosa descriptiva para asientos contables"
                             value={mGlosa}
                             onChange={(e) => setMGlosa(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800"
+                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100"
                           />
                         </div>
                       </div>
@@ -6289,27 +6178,27 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                       {/* AMOUNT */}
                       <div className="md:col-span-4">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Monto de Operación (S/.)</label>
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Monto de Operación (S/.)</label>
                         <input 
                           type="number" 
                           step="0.01"
                           placeholder="Monto en Soles"
                           value={mPrecioUnitario}
                           onChange={(e) => setMPrecioUnitario(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800 text-lg text-right"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800 dark:text-slate-100 text-lg text-right"
                           required
                         />
                       </div>
 
                       {/* GENERAL GLOSA DESCRIPTION */}
                       <div className="md:col-span-8">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Glosa / Concepto del Movimiento</label>
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Glosa / Concepto del Movimiento</label>
                         <input 
                           type="text" 
                           placeholder="Ej. Cobro total de factura de cartera F001-000101"
                           value={mGlosa}
                           onChange={(e) => setMGlosa(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100"
                           required
                         />
                       </div>
@@ -6318,7 +6207,7 @@ export default function App() {
 
                   {/* Detracciones or Retenciones conditional options for sales/purchases */}
                   {(activeModal === 'VENTA' || activeModal === 'COMPRA') && (
-                    <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/60 flex flex-col sm:flex-row gap-4 items-stretch justify-between">
+                    <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-3 border border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row gap-4 items-stretch justify-between">
                       <div className="flex-1 flex items-center gap-2">
                         <input 
                           type="checkbox" 
@@ -6330,29 +6219,29 @@ export default function App() {
                           }}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                         />
-                        <label htmlFor="mSujetoDetraccion" className="text-xs font-bold text-slate-600 cursor-pointer select-none flex flex-col">
+                        <label htmlFor="mSujetoDetraccion" className="text-xs font-bold text-slate-600 dark:text-slate-350 cursor-pointer select-none flex flex-col">
                           <span>📌 Operación Sujeta a Detracción (SPOT)</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Sujeto a detracción en cuenta BN</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">Sujeto a detracción en cuenta BN</span>
                         </label>
                       </div>
 
                       {sujetoDetraccion && (
                         <div className="flex items-center gap-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tasa de Detracción:</label>
+                          <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Tasa de Detracción:</label>
                           <select 
                             value={tasaDetraccion} 
                             onChange={(e) => setTasaDetraccion(Number(e.target.value))}
-                            className="bg-white border border-slate-200 text-xs font-extrabold py-1 px-2.5 rounded-lg text-slate-700 outline-none cursor-pointer"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-extrabold py-1 px-2.5 rounded-lg text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
                           >
-                            <option value={10}>10% (Servicios Generales)</option>
-                            <option value={12}>12% (Construcciones y Obras)</option>
-                            <option value={4}>4% (Otros Bienes / Pesca)</option>
+                            <option value={10} className="dark:bg-slate-900">10% (Servicios Generales)</option>
+                            <option value={12} className="dark:bg-slate-900">12% (Construcciones y Obras)</option>
+                            <option value={4} className="dark:bg-slate-900">4% (Otros Bienes / Pesca)</option>
                           </select>
                         </div>
                       )}
 
                       {activeModal === 'VENTA' && (
-                        <div className="flex-1 flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-4">
+                        <div className="flex-1 flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-slate-200 dark:border-slate-800 pt-2 sm:pt-0 sm:pl-4">
                           <input 
                             type="checkbox" 
                             id="mSujetoRetencion"
@@ -6363,9 +6252,9 @@ export default function App() {
                             }}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                           />
-                          <label htmlFor="mSujetoRetencion" className="text-xs font-bold text-slate-600 cursor-pointer select-none flex flex-col">
+                          <label htmlFor="mSujetoRetencion" className="text-xs font-bold text-slate-600 dark:text-slate-350 cursor-pointer select-none flex flex-col">
                             <span>🏢 Retención IGV SUNAT (3%)</span>
-                            <span className="text-[10px] text-slate-400 font-normal">Cliente es Agente de Retención</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">Cliente es Agente de Retención</span>
                           </label>
                         </div>
                       )}
@@ -6374,15 +6263,15 @@ export default function App() {
                 </div>
 
                 {/* 3. CONDICIONES DE PAGO E INFORMACIÓN DE TESORERÍA */}
-                <div className="space-y-3.5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
-                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">
+                <div className="space-y-3.5 bg-white dark:bg-slate-900/90 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                  <h4 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-850 pb-2">
                     3. CONDICIONES DE PAGO E INFORMACIÓN DE TESORERÍA
                   </h4>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* CONDICIÓN DE OPERACIÓN */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Condición de Operación</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Condición de Operación</label>
                       <select 
                         value={mCondicionOperacion}
                         onChange={(e) => {
@@ -6390,41 +6279,41 @@ export default function App() {
                           setMCondicionOperacion(val);
                           setMEstadoPago(val === 'Contado' ? 'Pagado' : 'Pendiente');
                         }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                       >
-                        <option value="Contado">Al Contado (Inmediato)</option>
-                        <option value="Crédito">Al Crédito (Factura en Cartera)</option>
+                        <option value="Contado" className="dark:bg-slate-900">Al Contado (Inmediato)</option>
+                        <option value="Crédito" className="dark:bg-slate-900">Al Crédito (Factura en Cartera)</option>
                       </select>
                     </div>
 
                     {/* ESTADO DE PAGO */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Estado de Pago</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Estado de Pago</label>
                       <select 
                         value={mEstadoPago}
                         onChange={(e) => setMEstadoPago(e.target.value as any)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                       >
-                        <option value="Pagado">
+                        <option value="Pagado" className="dark:bg-slate-900">
                           {activeModal === 'VENTA' ? 'Cobrado / Liquidado' : 'Pagado / Cancelado'}
                         </option>
-                        <option value="Pendiente">Pendiente de Cobro/Pago</option>
+                        <option value="Pendiente" className="dark:bg-slate-900">Pendiente de Cobro/Pago</option>
                       </select>
                     </div>
 
                     {/* FORMA DE PAGO */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Forma de Pago</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Forma de Pago</label>
                       <select 
                         value={mFormaPago}
                         onChange={(e) => setMFormaPago(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                       >
-                        <option value="Efectivo">Efectivo en Caja</option>
-                        <option value="Transferencia">Transferencia de Fondos bancarios</option>
-                        <option value="Tarjeta de Crédito/Débito">Tarjeta de Crédito / Débito</option>
-                        <option value="Cheque Comercial">Cheque no Negociable</option>
-                        <option value="Depósito en Cuenta">Depósito bancario directo</option>
+                        <option value="Efectivo" className="dark:bg-slate-900">Efectivo en Caja</option>
+                        <option value="Transferencia" className="dark:bg-slate-900">Transferencia de Fondos bancarios</option>
+                        <option value="Tarjeta de Crédito/Débito" className="dark:bg-slate-900">Tarjeta de Crédito / Débito</option>
+                        <option value="Cheque Comercial" className="dark:bg-slate-900">Cheque no Negociable</option>
+                        <option value="Depósito en Cuenta" className="dark:bg-slate-900">Depósito bancario directo</option>
                       </select>
                     </div>
                   </div>
@@ -6432,45 +6321,45 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1.5">
                     {/* CUENTA DE DINERO */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                         {activeModal === 'TRANSFERENCIA' ? 'Cuenta Origen de Fondos' : 'Cuenta de Dinero / Destino'}
                       </label>
                       <select 
                         value={mCuentaDinero}
                         onChange={(e) => setMCuentaDinero(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                       >
-                        <option value="1041">Banco - Cuenta Corriente Operativa (1041)</option>
-                        <option value="101">Caja Chica - Efectivo Disponible (101)</option>
-                        <option value="1042">Banco de la Nación - Cuenta de Detracciones (1042)</option>
+                        <option value="1041" className="dark:bg-slate-900">Banco - Cuenta Corriente Operativa (1041)</option>
+                        <option value="101" className="dark:bg-slate-900">Caja Chica - Efectivo Disponible (101)</option>
+                        <option value="1042" className="dark:bg-slate-900">Banco de la Nación - Cuenta de Detracciones (1042)</option>
                       </select>
                     </div>
 
                     {/* ESTADO INTERNO / OTRAS CUENTAS */}
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                         {activeModal === 'TRANSFERENCIA' ? 'Cuenta Destino de Fondos' : 'Estado Interno del Asiento'}
                       </label>
                       {activeModal === 'TRANSFERENCIA' ? (
                         <select 
                           value={mObservaciones} // using mObservaciones to hold transfer destination temporary
                           onChange={(e) => setMObservaciones(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                           required
                         >
-                          <option value="1041">Banco - Cuenta Corriente Operativa (1041)</option>
-                          <option value="101">Caja Chica - Efectivo Disponible (101)</option>
-                          <option value="1042">Banco de la Nación - Cuenta de Detracciones (1042)</option>
+                          <option value="1041" className="dark:bg-slate-900">Banco - Cuenta Corriente Operativa (1041)</option>
+                          <option value="101" className="dark:bg-slate-900">Caja Chica - Efectivo Disponible (101)</option>
+                          <option value="1042" className="dark:bg-slate-900">Banco de la Nación - Cuenta de Detracciones (1042)</option>
                         </select>
                       ) : (
                         <select 
                           value={mEstadoInterno}
                           onChange={(e) => setMEstadoInterno(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 cursor-pointer"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100 cursor-pointer"
                         >
-                          <option value="Registrado">Registrado y Cerrado (SIRE SUNAT)</option>
-                          <option value="Borrador">Asiento Temporal Borrador</option>
-                          <option value="Aprobado Auditoria">Aprobado por Auditoría Interna</option>
+                          <option value="Registrado" className="dark:bg-slate-900">Registrado y Cerrado (SIRE SUNAT)</option>
+                          <option value="Borrador" className="dark:bg-slate-900">Asiento Temporal Borrador</option>
+                          <option value="Aprobado Auditoria" className="dark:bg-slate-900">Aprobado por Auditoría Interna</option>
                         </select>
                       )}
                     </div>
@@ -6479,13 +6368,13 @@ export default function App() {
                   {/* OBSERVACIONES */}
                   {activeModal !== 'TRANSFERENCIA' && (
                     <div className="pt-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Observaciones / Notas de Auditoría</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Observaciones / Notas de Auditoría</label>
                       <textarea 
                         rows={2}
                         placeholder="Notas administrativas o glosas de auditoría..."
                         value={mObservaciones}
                         onChange={(e) => setMObservaciones(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800"
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
                   )}
@@ -6598,6 +6487,16 @@ export default function App() {
 
           </div>
         </div>
+      )}
+
+      {/* COMPROBANTE PDF MODAL */}
+      {selectedVentaComprobante && (
+        <ComprobantePDFModal
+          isOpen={selectedVentaComprobante !== null}
+          onClose={() => setSelectedVentaComprobante(null)}
+          venta={selectedVentaComprobante}
+          companyConfig={companyConfig}
+        />
       )}
 
       {/* FLOATING REAL-TIME ACTIVITY TOAST POPUP */}

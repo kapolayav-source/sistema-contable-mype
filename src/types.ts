@@ -16,6 +16,7 @@ export interface Transaction {
   total: number;
   glosa: string;
   rucClienteProveedor: string;
+  clienteProveedorNombre?: string; // the clean customer/supplier name
   documento: string; // e.g. "F001-000412" or "PLAN-06/2026"
   creadoPor?: string; // tracks which user/role created it
   creadoPorNombre?: string; // tracks name of user who created it

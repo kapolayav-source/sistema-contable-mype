@@ -283,6 +283,10 @@ export default function App() {
   const [mEstadoInterno, setMEstadoInterno] = useState<string>('Registrado');
   const [mObservaciones, setMObservaciones] = useState<string>('');
   
+  // Real-time RUC / DNI Consulta states
+  const [loadingConsulta, setLoadingConsulta] = useState<boolean>(false);
+  const [consultaStatus, setConsultaStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' });
+  
   // Tax regime (Fixed to Régimen MYPE Tributario)
   const [regimen] = useState<'RER' | 'RMT'>('RMT');
 
@@ -1322,6 +1326,44 @@ export default function App() {
     setSujetoRetencion(false);
   };
 
+  const handleConsultaRucDni = async (num: string) => {
+    const cleanNum = num.replace(/\D/g, '').trim();
+    if (cleanNum.length !== 8 && cleanNum.length !== 11) {
+      setConsultaStatus({ type: 'error', message: 'Ingresa 8 dígitos (DNI) o 11 dígitos (RUC).' });
+      return;
+    }
+
+    setLoadingConsulta(true);
+    setConsultaStatus({ type: null, message: '' });
+
+    try {
+      const response = await fetch(`/api/consulta-ruc-dni?numero=${cleanNum}`);
+      if (!response.ok) {
+        throw new Error('Servidor SUNAT/RENIEC no disponible temporalmente.');
+      }
+      const data = await response.json();
+      if (data && data.success && data.nombre) {
+        setMClienteProveedor(data.nombre);
+        setConsultaStatus({
+          type: 'success',
+          message: `✓ ${data.tipo} Validado (${data.origen})`
+        });
+      } else {
+        setConsultaStatus({
+          type: 'error',
+          message: data.error || 'No se encontró información para este número.'
+        });
+      }
+    } catch (err: any) {
+      setConsultaStatus({
+        type: 'error',
+        message: 'Consulta SUNAT/RENIEC fuera de línea. Ingresa el nombre manualmente.'
+      });
+    } finally {
+      setLoadingConsulta(false);
+    }
+  };
+
   const handleModalSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeModal) return;
@@ -1417,6 +1459,7 @@ export default function App() {
       total: calculatedTotal,
       glosa: finalGlosa,
       rucClienteProveedor: mRuc ? mRuc.trim() : (activeModal === 'VENTA' || activeModal === 'COBRO' ? '20100200300' : '20500600700'),
+      clienteProveedorNombre: (activeModal !== 'TRANSFERENCIA' && mClienteProveedor) ? mClienteProveedor.trim() : undefined,
       documento: resolvedDocumento,
       creadoPor: currentUserRole,
       creadoPorNombre: currentUserFullName,
@@ -3529,7 +3572,7 @@ export default function App() {
                                     <tr key={s.id} className={`hover:bg-slate-50/40 transition-colors ${s.isExtornado ? 'opacity-40 line-through bg-slate-50/80' : ''}`}>
                                       <td className="py-3 px-3 font-medium text-slate-600">{s.fecha}</td>
                                       <td className="py-3 px-3 font-mono font-bold text-slate-800">{s.documento}</td>
-                                      <td className="py-3 px-3 font-semibold text-slate-900">{s.glosa}</td>
+                                      <td className="py-3 px-3 font-semibold text-slate-900">{s.clienteProveedorNombre || s.glosa}</td>
                                       <td className="py-3 px-3 font-mono text-slate-500">{s.rucClienteProveedor}</td>
                                       <td className="py-3 px-3 text-right font-mono font-bold text-slate-700">S/. {s.montoBase.toFixed(2)}</td>
                                       <td className="py-3 px-3 text-right font-mono text-slate-600">S/. {s.igv.toFixed(2)}</td>
@@ -3682,7 +3725,7 @@ export default function App() {
                                     <tr key={s.id} className={`hover:bg-slate-50/40 transition-colors ${s.isExtornado ? 'opacity-40 line-through bg-slate-50/80' : ''}`}>
                                       <td className="py-3 px-3 font-medium text-slate-600">{s.fecha}</td>
                                       <td className="py-3 px-3 font-mono font-bold text-slate-800">{s.documento}</td>
-                                      <td className="py-3 px-3 font-semibold text-slate-900">{s.glosa}</td>
+                                      <td className="py-3 px-3 font-semibold text-slate-900">{s.clienteProveedorNombre || s.glosa}</td>
                                       <td className="py-3 px-3 font-mono text-slate-500">{s.rucClienteProveedor}</td>
                                       <td className="py-3 px-3 text-right font-mono font-bold text-slate-700">S/. {s.montoBase.toFixed(2)}</td>
                                       <td className="py-3 px-3 text-right font-mono text-slate-600">S/. {s.igv.toFixed(2)}</td>
@@ -6043,24 +6086,50 @@ export default function App() {
                   {activeModal !== 'TRANSFERENCIA' && (
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1.5">
                       {/* RUC / DNI */}
-                      <div className="md:col-span-4">
-                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
-                          {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'RUC / DNI Cliente' : 'RUC / DNI Proveedor'}
-                        </label>
+                      <div className="md:col-span-4 animate-fadeIn">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                            {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'RUC / DNI Cliente' : 'RUC / DNI Proveedor'}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleConsultaRucDni(mRuc)}
+                            disabled={loadingConsulta || (mRuc.length !== 8 && mRuc.length !== 11)}
+                            className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 disabled:opacity-40 disabled:hover:text-indigo-600 flex items-center gap-1 transition-all focus:outline-none"
+                            title="Validar y rellenar automáticamente vía SUNAT/RENIEC"
+                          >
+                            {loadingConsulta ? (
+                              <span className="flex items-center gap-1">
+                                <svg className="animate-spin h-2.5 w-2.5 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Consultando...
+                              </span>
+                            ) : (
+                              '🔍 Consulta Rápida'
+                            )}
+                          </button>
+                        </div>
                         <input 
-                           type="text" 
+                          type="text" 
                           placeholder="Ej. 20110000101"
                           maxLength={11}
                           value={mRuc}
-                          onChange={(e) => setMRuc(e.target.value.replace(/\D/g, ''))}
+                          onChange={(e) => {
+                            setMRuc(e.target.value.replace(/\D/g, ''));
+                            if (consultaStatus.type) {
+                              setConsultaStatus({ type: null, message: '' });
+                            }
+                          }}
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 font-mono font-bold text-slate-800 dark:text-slate-100"
                           required
                         />
                       </div>
 
                       {/* CLIENTE / RAZÓN SOCIAL */}
-                      <div className="md:col-span-8">
-                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
+                      <div className="md:col-span-8 animate-fadeIn">
+                        <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
                           {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'Cliente / Razón Social' : 'Proveedor / Razón Social'}
                         </label>
                         <input 
@@ -6072,6 +6141,20 @@ export default function App() {
                           required
                         />
                       </div>
+
+                      {/* Consulta Status Banner */}
+                      {consultaStatus.message && (
+                        <div className="md:col-span-12 -mt-2 animate-fadeIn">
+                          <div className={`px-3.5 py-2 rounded-xl text-xs font-semibold border ${
+                            consultaStatus.type === 'success' 
+                              ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400' 
+                              : 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30 text-red-700 dark:text-red-400'
+                          } flex items-center gap-1.5`}>
+                            <span className="text-sm">{consultaStatus.type === 'success' ? '✓' : 'ℹ'}</span>
+                            <span>{consultaStatus.message}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

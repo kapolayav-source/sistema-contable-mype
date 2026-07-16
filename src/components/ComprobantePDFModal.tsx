@@ -74,10 +74,15 @@ export const ComprobantePDFModal: React.FC<ComprobantePDFModalProps> = ({
   const tipoComprobanteSUNATCode = isFactura ? '01' : '03';
 
   // Resolve customer name and address elegantly for realism based on RUC
-  let razonSocialCliente = 'CLIENTE GENÉRICO';
+  let razonSocialCliente = venta.clienteProveedorNombre || 'CLIENTE GENÉRICO';
   let direccionCliente = 'AV. JAVIER PRADO ESTE 2450, SAN BORJA, LIMA';
 
-  if (venta.rucClienteProveedor === '20601234567') {
+  if (venta.clienteProveedorNombre) {
+    razonSocialCliente = venta.clienteProveedorNombre;
+    // Generate an elegant, realistic address if they typed a name
+    const seed = parseInt(venta.rucClienteProveedor.slice(-2)) || 5;
+    direccionCliente = `Calle Las Camelias ${200 + (seed * 8)}, San Isidro, Lima`;
+  } else if (venta.rucClienteProveedor === '20601234567') {
     razonSocialCliente = 'Inversiones Unidas SAC';
     direccionCliente = 'Av. La Marina 1520, San Miguel, Lima';
   } else if (venta.rucClienteProveedor === '10467812349') {

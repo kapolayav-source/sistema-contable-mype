@@ -255,6 +255,22 @@ export default function App() {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mype_cloud_sync_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [monitoreoEnVivo, setMonitoreoEnVivo] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mype_monitoreo_en_vivo') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [simulatedAction, setSimulatedAction] = useState<string | null>(null);
 
   // PCGE Custom Selected Account details
@@ -569,9 +585,9 @@ export default function App() {
     }
   }, [ruc]);
 
-  // 1. Fetch transactions from Supabase on load and on a periodic 8s polling interval for real-time collaboration
+  // 1. Fetch transactions from Supabase on load and on a periodic 8s polling interval if live monitoring is active
   useEffect(() => {
-    if (!ruc || !isSupabaseConfigured || !supabase) return;
+    if (!ruc || !isSupabaseConfigured || !supabase || !cloudSyncEnabled) return;
 
     const fetchTransactions = async () => {
       try {
@@ -639,13 +655,15 @@ export default function App() {
 
     fetchTransactions();
 
-    const interval = setInterval(fetchTransactions, 8000);
-    return () => clearInterval(interval);
-  }, [ruc]);
+    if (monitoreoEnVivo) {
+      const interval = setInterval(fetchTransactions, 8000);
+      return () => clearInterval(interval);
+    }
+  }, [ruc, monitoreoEnVivo, cloudSyncEnabled]);
 
   // 2. Push local changes (inserts, updates, deletes) to Supabase cloud
   useEffect(() => {
-    if (!ruc || !isSupabaseConfigured || !supabase) return;
+    if (!ruc || !isSupabaseConfigured || !supabase || !cloudSyncEnabled) return;
 
     const syncToSupabase = async () => {
       // Find transactions that are new or have changed
@@ -719,7 +737,7 @@ export default function App() {
     };
 
     syncToSupabase();
-  }, [transactions, ruc]);
+  }, [transactions, ruc, cloudSyncEnabled]);
 
   useEffect(() => {
     localStorage.setItem('mype_modo_sencillo', String(modoSencillo));
@@ -732,6 +750,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('mype_starting_cash', String(startingCash));
   }, [startingCash]);
+
+  useEffect(() => {
+    localStorage.setItem('mype_monitoreo_en_vivo', String(monitoreoEnVivo));
+  }, [monitoreoEnVivo]);
+
+  useEffect(() => {
+    localStorage.setItem('mype_cloud_sync_enabled', String(cloudSyncEnabled));
+  }, [cloudSyncEnabled]);
 
 
 
@@ -1716,7 +1742,7 @@ export default function App() {
     }
     if (confirm('¿Está seguro de limpiar absolutamente todos los datos de transacción de esta empresa?')) {
       try {
-        if (isSupabaseConfigured && supabase && ruc) {
+        if (isSupabaseConfigured && supabase && ruc && cloudSyncEnabled) {
           const { error } = await supabase
             .from('transacciones')
             .delete()
@@ -2561,18 +2587,67 @@ export default function App() {
 
         {/* BOTTOM BLOCK: CERRAR SESIÓN */}
         <div className="space-y-3">
-          {/* Dark Mode toggle embedded compactly */}
-          <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
-            <span>Modo Oscuro</span>
-            <button 
-              onClick={() => setDarkMode(prev => !prev)}
-              className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                darkMode ? 'bg-indigo-600' : 'bg-slate-200'
-              }`}
-              title="Alternar Modo Oscuro"
-            >
-              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ${darkMode ? 'translate-x-4' : 'translate-x-0'}`} />
-            </button>
+          {/* Toggles embedded compactly */}
+          <div className="space-y-2 border-b border-slate-100 dark:border-slate-800/40 pb-2.5">
+            {isSupabaseConfigured ? (
+              <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
+                <span className="flex items-center gap-1.5" title={cloudSyncEnabled ? "Sincronizando transacciones con Supabase" : "Transacciones guardadas localmente y seguras"}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cloudSyncEnabled ? 'bg-indigo-500 animate-pulse' : 'bg-slate-400'}`} />
+                  Sincronización Nube
+                </span>
+                <button 
+                  onClick={() => {
+                    const nextVal = !cloudSyncEnabled;
+                    setCloudSyncEnabled(nextVal);
+                    if (!nextVal) {
+                      setMonitoreoEnVivo(false);
+                    }
+                  }}
+                  className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    cloudSyncEnabled ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-800'
+                  }`}
+                  title="Activar/Desactivar Sincronización en Tiempo Real con Supabase"
+                >
+                  <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ${cloudSyncEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                <span>🛡️ Local / Offline Seguro</span>
+                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/40 px-1 rounded">Activo</span>
+              </div>
+            )}
+
+            {isSupabaseConfigured && cloudSyncEnabled && (
+              <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
+                <span className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${monitoreoEnVivo ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                  Monitoreo en Vivo
+                </span>
+                <button 
+                  onClick={() => setMonitoreoEnVivo(prev => !prev)}
+                  className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    monitoreoEnVivo ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-800'
+                  }`}
+                  title="Alternar Monitoreo de Colaboradores en Tiempo Real"
+                >
+                  <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ${monitoreoEnVivo ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between px-1 text-[10px] text-slate-400">
+              <span>Modo Oscuro</span>
+              <button 
+                onClick={() => setDarkMode(prev => !prev)}
+                className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                  darkMode ? 'bg-indigo-600' : 'bg-slate-200'
+                }`}
+                title="Alternar Modo Oscuro"
+              >
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition duration-200 ${darkMode ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
           </div>
 
           <button 

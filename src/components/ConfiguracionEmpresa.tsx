@@ -10,6 +10,10 @@ interface ConfiguracionEmpresaProps {
   darkMode: boolean;
   companyConfig: CompanyConfig;
   onConfigChange: (config: CompanyConfig) => void;
+  bypassUITLock: boolean;
+  onBypassUITLockChange: (val: boolean) => void;
+  startingCash: number;
+  onStartingCashChange: (val: number) => void;
 }
 
 export const DEFAULT_COMPANY_CONFIG: CompanyConfig = {
@@ -21,7 +25,16 @@ export const DEFAULT_COMPANY_CONFIG: CompanyConfig = {
   representanteLegal: 'Carlos Mendoza Ramos'
 };
 
-export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig, onConfigChange }: ConfiguracionEmpresaProps) {
+export function ConfiguracionEmpresa({ 
+  currentUserRole, 
+  darkMode, 
+  companyConfig, 
+  onConfigChange,
+  bypassUITLock,
+  onBypassUITLockChange,
+  startingCash,
+  onStartingCashChange
+}: ConfiguracionEmpresaProps) {
   const [config, setConfig] = useState<CompanyConfig>(companyConfig);
 
   // Sync state if prop changes
@@ -315,6 +328,74 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
         )}
       </div>
 
+      {/* 1.5. PARAMETROS DE CONFIGURACION AVANZADA (CAJA DE INICIO & BYPASS) */}
+      <div className={`p-6 rounded-3xl border transition-all duration-300 ${cardClass}`}>
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-5 mb-6">
+          <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+            <CloudLightning className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Configuración Contable Avanzada</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Personalice el saldo inicial en caja de su empresa y habilite libros contables adicionales de forma rápida.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* CAJA DE INICIO */}
+          <div className="space-y-2 bg-slate-50/50 dark:bg-slate-950/30 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <label className={`text-[11px] font-bold uppercase tracking-wider block ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+              💵 Caja de Inicio / Saldo Inicial (S/.)
+            </label>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
+              Establezca un fondo inicial de dinero disponible en efectivo para que el sistema debite automáticamente en tu balance general.
+            </p>
+            <div className="relative mt-2">
+              <span className="absolute left-3 top-2.5 text-xs font-mono font-bold text-slate-400">S/.</span>
+              <input 
+                type="number"
+                min={0}
+                step="100"
+                placeholder="0.00"
+                value={startingCash || ''}
+                onChange={(e) => onStartingCashChange(Math.max(0, parseFloat(e.target.value) || 0))}
+                className={`w-full rounded-xl py-2 px-3.5 pl-10 text-xs font-mono font-bold focus:outline-none transition-all ${inputBgClass}`}
+              />
+            </div>
+            <span className="text-[9px] text-indigo-500 dark:text-indigo-400 font-semibold block mt-1">
+              💡 Se creará una contrapartida automática en el Capital Social (Cta. 5011) por partida doble.
+            </span>
+          </div>
+
+          {/* BYPASS UIT LOCK */}
+          <div className="space-y-2 bg-slate-50/50 dark:bg-slate-950/30 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+            <div>
+              <label className={`text-[11px] font-bold uppercase tracking-wider block ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                🔓 Desbloqueo de Libros Auxiliares (Bypass UIT)
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans mt-1">
+                La SUNAT exonera a microempresas de llevar el Libro Mayor y de Inventarios. Active esta opción para forzar su apertura y contar con un control contable completo de su negocio.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 mt-3">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={bypassUITLock} 
+                  onChange={(e) => onBypassUITLockChange(e.target.checked)}
+                  className="sr-only peer cursor-pointer"
+                />
+                <div className="w-10 h-5 bg-slate-300 dark:bg-slate-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                <span className="ml-3 text-xs font-bold text-slate-750 dark:text-slate-300">
+                  {bypassUITLock ? '✓ FORZAR HABILITACIÓN ACTIVA' : '✗ RESPETAR LÍMITES SUNAT'}
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 2. USER ACCESS MANAGEMENT (ONLY FOR GERENTE - "darle acceso a otra persona") */}
       <div className={`p-6 rounded-3xl border transition-all duration-300 ${cardClass}`}>
         <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-5 mb-6">
@@ -324,7 +405,7 @@ export function ConfiguracionEmpresa({ currentUserRole, darkMode, companyConfig,
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">Usuarios y Accesos Autorizados</h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Administre las personas de su carrera o salón a las que desea darles acceso a este RUC, asignándoles roles SOL de consulta o registro contable.
+              Administre los accesos de las personas autorizadas a consultar o registrar transacciones bajo este RUC, asignándoles roles SOL de consulta o registro contable.
             </p>
           </div>
         </div>

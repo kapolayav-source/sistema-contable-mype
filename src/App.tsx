@@ -217,6 +217,8 @@ export default function App() {
     }
   });
 
+  const transactionsRucRef = useRef<string>(ruc);
+
   const [activeView, setActiveView] = useState<'transacciones' | 'catalogo' | 'libros' | 'sunat' | 'configuracion'>('transacciones');
   const [moduloActivo, setModuloActivo] = useState<'menu' | 'cronograma' | 'libros' | 'impuestos' | 'simulador' | 'configuracion'>('menu');
   const [activeTab, setActiveTab] = useState<'Inicio' | 'SIRE' | 'Impuestos' | 'Simulador'>('Inicio');
@@ -264,7 +266,7 @@ export default function App() {
   const [formGlosa, setFormGlosa] = useState<string>('');
 
   // Advanced High-Fidelity Modal Registration states
-  const [activeModal, setActiveModal] = useState<'VENTA' | 'COMPRA' | 'COBRO' | 'PAGO' | 'TRANSFERENCIA' | null>(null);
+  const [activeModal, setActiveModal] = useState<'VENTA' | 'COMPRA' | 'COBRO' | 'PAGO' | 'TRANSFERENCIA' | 'APERTURA' | null>(null);
   
   const [mFecha, setMFecha] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [mTipoComprobante, setMTipoComprobante] = useState<string>('Factura');
@@ -361,6 +363,23 @@ export default function App() {
     }
   });
 
+  const [bypassUITLock, setBypassUITLock] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mype_bypass_uit_lock') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [startingCash, setStartingCash] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('mype_starting_cash');
+      return saved ? parseFloat(saved) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
   useEffect(() => {
     try {
       localStorage.setItem('mype_dark_mode', String(darkMode));
@@ -446,7 +465,7 @@ export default function App() {
   }, [projectedIncomeUIT]);
 
   useEffect(() => {
-    if (ruc) {
+    if (ruc && ruc === transactionsRucRef.current) {
       localStorage.setItem('mype_transactions_' + ruc, JSON.stringify(transactions));
     }
   }, [transactions, ruc]);
@@ -511,6 +530,7 @@ export default function App() {
           }));
           setTransactions(mapped);
           prevTransactionsRef.current = mapped;
+          transactionsRucRef.current = ruc;
           return;
         }
       }
@@ -533,13 +553,16 @@ export default function App() {
         }));
         setTransactions(mapped);
         prevTransactionsRef.current = mapped;
+        transactionsRucRef.current = ruc;
       } else {
         setTransactions(INITIAL_TRANSACTIONS);
         prevTransactionsRef.current = INITIAL_TRANSACTIONS;
+        transactionsRucRef.current = ruc;
       }
     } catch {
       setTransactions(INITIAL_TRANSACTIONS);
       prevTransactionsRef.current = INITIAL_TRANSACTIONS;
+      transactionsRucRef.current = ruc;
     }
   }, [ruc]);
 
@@ -698,6 +721,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('mype_modo_sencillo', String(modoSencillo));
   }, [modoSencillo]);
+
+  useEffect(() => {
+    localStorage.setItem('mype_bypass_uit_lock', String(bypassUITLock));
+  }, [bypassUITLock]);
+
+  useEffect(() => {
+    localStorage.setItem('mype_starting_cash', String(startingCash));
+  }, [startingCash]);
 
 
 
@@ -923,11 +954,59 @@ export default function App() {
 
   // Generate Accounting Entries dynamically
   const allEntries: AccountingEntry[] = [];
+  if (startingCash > 0) {
+    allEntries.push(
+      {
+        id: 'starting_cash_debit',
+        asientoId: 'tx_starting_cash',
+        fecha: `${period}-01`,
+        glosa: 'Apertura: Caja de inicio / Saldo inicial en efectivo',
+        cuenta: '101',
+        cuentaNombre: 'Caja - Efectivo',
+        debe: startingCash,
+        haber: 0
+      },
+      {
+        id: 'starting_cash_credit',
+        asientoId: 'tx_starting_cash',
+        fecha: `${period}-01`,
+        glosa: 'Apertura: Caja de inicio / Saldo inicial en efectivo',
+        cuenta: '5011',
+        cuentaNombre: 'Acciones - Capital Social',
+        debe: 0,
+        haber: startingCash
+      }
+    );
+  }
   visibleTransactions.forEach(tx => {
     allEntries.push(...generateSeatsFromTransaction(tx));
   });
 
   const allPeriodEntries: AccountingEntry[] = [];
+  if (startingCash > 0) {
+    allPeriodEntries.push(
+      {
+        id: 'starting_cash_debit',
+        asientoId: 'tx_starting_cash',
+        fecha: `${period}-01`,
+        glosa: 'Apertura: Caja de inicio / Saldo inicial en efectivo',
+        cuenta: '101',
+        cuentaNombre: 'Caja - Efectivo',
+        debe: startingCash,
+        haber: 0
+      },
+      {
+        id: 'starting_cash_credit',
+        asientoId: 'tx_starting_cash',
+        fecha: `${period}-01`,
+        glosa: 'Apertura: Caja de inicio / Saldo inicial en efectivo',
+        cuenta: '5011',
+        cuentaNombre: 'Acciones - Capital Social',
+        debe: 0,
+        haber: startingCash
+      }
+    );
+  }
   filteredTransactions.forEach(tx => {
     allPeriodEntries.push(...generateSeatsFromTransaction(tx));
   });
@@ -1437,7 +1516,7 @@ export default function App() {
       calculatedIgv = mAfectacionIGV.includes('Gravado') ? baseNum * 0.18 : 0;
       calculatedTotal = baseNum + calculatedIgv;
     } else {
-      // For Cobro, Pago, Transferencia
+      // For Cobro, Pago, Transferencia, Apertura
       baseNum = parseFloat(mPrecioUnitario); // This represents the cash movement amount
       if (isNaN(baseNum) || baseNum <= 0) {
         alert('Por favor, ingresa un monto válido para la operación.');
@@ -1462,6 +1541,7 @@ export default function App() {
       else if (activeModal === 'COBRO') finalGlosa = `Cobro de Factura ${mSerieNumero}`;
       else if (activeModal === 'PAGO') finalGlosa = `Pago a Proveedor ${mSerieNumero}`;
       else if (activeModal === 'TRANSFERENCIA') finalGlosa = `Transferencia interna de fondos`;
+      else if (activeModal === 'APERTURA') finalGlosa = `Aporte de capital de socio`;
     }
 
     let resolvedDocumento = mSerieNumero.trim();
@@ -1471,6 +1551,7 @@ export default function App() {
       else if (activeModal === 'COBRO') resolvedDocumento = `RC01-${Math.floor(Math.random() * 90000) + 10000}`;
       else if (activeModal === 'PAGO') resolvedDocumento = `RP01-${Math.floor(Math.random() * 90000) + 10000}`;
       else if (activeModal === 'TRANSFERENCIA') resolvedDocumento = `TR-${Math.floor(Math.random() * 90000) + 10000}`;
+      else if (activeModal === 'APERTURA') resolvedDocumento = `AC01-${Math.floor(Math.random() * 90000) + 10000}`;
     }
 
     let calculatedDetraccion = 0;
@@ -1526,8 +1607,8 @@ export default function App() {
       montoRetencion: activeModal === 'VENTA' && sujetoRetencion ? calculatedRetencion : undefined,
       
       // Treasury fields
-      cuentaOrigen: activeModal === 'COBRO' ? '1212' : activeModal === 'PAGO' ? '4212' : mCuentaDinero,
-      cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : mObservaciones, // For transfers we hold the dest account
+      cuentaOrigen: activeModal === 'COBRO' ? '1212' : activeModal === 'PAGO' ? '4212' : activeModal === 'APERTURA' ? '5011' : mCuentaDinero,
+      cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : activeModal === 'APERTURA' ? mCuentaDinero : mObservaciones, // For transfers we hold the dest account
       formaPago: mFormaPago,
       observaciones: mObservaciones,
 
@@ -1625,13 +1706,25 @@ export default function App() {
     }
   };
 
-  const handleClearAllData = () => {
+  const handleClearAllData = async () => {
     if (currentUserRole === 'EMPLEADO') {
       alert('⚠️ ACCESO DENEGADO\n\nSu rol es EMPLEADO. No cuenta con autorización para purgar la base de datos de transacciones de la empresa.');
       return;
     }
-    if (confirm('¿Está seguro de limpiar absolutamente todos los datos de transacción de esta simulación?')) {
-      setTransactions([]);
+    if (confirm('¿Está seguro de limpiar absolutamente todos los datos de transacción de esta empresa?')) {
+      try {
+        if (isSupabaseConfigured && supabase && ruc) {
+          const { error } = await supabase
+            .from('transacciones')
+            .delete()
+            .eq('ruc_empresa', ruc);
+          if (error) throw error;
+        }
+        setTransactions([]);
+        prevTransactionsRef.current = [];
+      } catch (err: any) {
+        alert('Error al eliminar datos de Supabase: ' + err.message);
+      }
     }
   };
 
@@ -2420,7 +2513,7 @@ export default function App() {
               }`}
             >
               <span>💡</span>
-              <span>Simulador</span>
+              <span>Planificador Financiero</span>
             </button>
 
             <button
@@ -2477,7 +2570,7 @@ export default function App() {
               {activeTab === 'Inicio' && 'Dashboard Principal'}
               {activeTab === 'SIRE' && 'Libros Electrónicos SIRE'}
               {activeTab === 'Impuestos' && 'Cálculo de Impuestos MYPE'}
-              {activeTab === 'Simulador' && 'Simulador de Solvencia Financiera'}
+              {activeTab === 'Simulador' && 'Planificación y Solvencia Financiera'}
               {activeTab === 'Configuracion' && 'Configuración de Empresa & Empleados'}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -2526,7 +2619,7 @@ export default function App() {
                     <p className={`text-xs max-w-2xl mt-1 leading-relaxed ${subtitleColor}`}>
                       {modoSencillo 
                         ? "Hemos simplificado todos los términos contables difíciles de la SUNAT a ejemplos cotidianos de tu negocio. ¡Elige un módulo para comenzar a gestionar tus cuentas!" 
-                        : "Panel de autogestión contable y tributario para el Régimen MYPE y Especial. Selecciona un módulo para gestionar transacciones, impuestos y simulaciones financieras."}
+                        : "Panel de autogestión contable y tributario para el Régimen MYPE y Especial. Selecciona un módulo para gestionar transacciones, impuestos y análisis financieros."}
                     </p>
                   </div>
                 </div>
@@ -2615,7 +2708,7 @@ export default function App() {
                   </div>
                 </button>
 
-                {/* TARJETA 4: Simulador Financiero */}
+                {/* TARJETA 4: Planificador Financiero */}
                 <button
                   type="button"
                   onClick={() => setModuloActivo('simulador')}
@@ -2630,7 +2723,7 @@ export default function App() {
                     </span>
                   </div>
                   <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
-                    Simulador Financiero
+                    Planificador Financiero
                   </h3>
                   <p className={`text-xs leading-relaxed ${subtitleColor}`}>
                     Toma decisiones de negocio y observa su impacto financiero en tiempo real sobre tu balance de situación y semáforo de solvencia.
@@ -2687,7 +2780,7 @@ export default function App() {
                   {moduloActivo === 'cronograma' && '📅 Calendario & Alertas'}
                   {moduloActivo === 'libros' && '📖 Libros Electrónicos (SIRE)'}
                   {moduloActivo === 'impuestos' && '⚖️ Impuestos & Planeamiento'}
-                  {moduloActivo === 'simulador' && '💡 Simulador Financiero'}
+                  {moduloActivo === 'simulador' && '💡 Planificador Financiero'}
                   {moduloActivo === 'configuracion' && '⚙️ Configuración Empresa'}
                 </span>
               </div>
@@ -2751,6 +2844,10 @@ export default function App() {
                   setRuc(newConfig.ruc);
                   setRucLastDigit(newConfig.ruc.length > 0 ? newConfig.ruc[newConfig.ruc.length - 1] : '7');
                 }}
+                bypassUITLock={bypassUITLock}
+                onBypassUITLockChange={setBypassUITLock}
+                startingCash={startingCash}
+                onStartingCashChange={setStartingCash}
               />
             </div>
           )}
@@ -2931,7 +3028,7 @@ export default function App() {
                   </div>
                   <h3 className="font-bold text-lg font-heading tracking-tight mt-1 text-slate-900 dark:text-slate-100">📊 Proyección de Impuesto a la Renta Anual</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-3xl mt-0.5">
-                    Estima el Impuesto a la Renta Anual del ejercicio basándote en la escala progresiva acumulativa oficial de SUNAT. Modifica la utilidad proyectada para simular tu cierre anual.
+                    Estima el Impuesto a la Renta Anual del ejercicio basándote en la escala progresiva acumulativa oficial de SUNAT. Modifica la utilidad proyectada para proyectar tu cierre anual.
                   </p>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 text-right shrink-0">
@@ -3337,6 +3434,36 @@ export default function App() {
                       <span className="text-[10px] bg-amber-100 text-amber-800 font-black px-2 py-0.5 rounded-full group-hover:translate-x-0.5 transition-transform font-sans">Fondos →</span>
                     </button>
 
+                    {/* REGISTRAR APORTE DE CAPITAL */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveModal('APERTURA');
+                        setMTipoComprobante('Recibo de Caja');
+                        setMSerieNumero(`AC01-${Math.floor(Math.random() * 90000) + 10000}`);
+                        setMPrecioUnitario('5000');
+                        setMGlosa('Aporte de capital social de socios fundadores');
+                        setMRuc(ruc);
+                        setMClienteProveedor('Socios Fundadores');
+                        setMCatalogItem('Aporte de Capital');
+                        setMFormaPago('Efectivo');
+                        setMCuentaDinero('101');
+                        setMObservaciones('5011');
+                      }}
+                      className="w-full text-left p-3 rounded-2xl border border-purple-100 hover:border-purple-300 bg-purple-50/20 hover:bg-purple-50/40 transition-all cursor-pointer flex justify-between items-center group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="bg-purple-500 text-white w-9 h-9 rounded-xl flex items-center justify-center font-bold text-base shadow-sm shadow-purple-500/10">
+                          🛡️
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900">Registrar Aporte de Capital</h4>
+                          <p className="text-[10px] text-slate-500 font-sans">Ingreso de inversión propia o capital (Cta. 5011)</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-black px-2 py-0.5 rounded-full group-hover:translate-x-0.5 transition-transform font-sans">Socios →</span>
+                    </button>
+
                   </div>
                 </div>
               </div>
@@ -3458,7 +3585,7 @@ export default function App() {
                               : 'border-transparent text-slate-400 hover:text-slate-650'
                           }`}
                         >
-                          📖 {projectedIncomeUIT <= 300 ? "LDFS (Diario Simplificado)" : "Libro Diario Completo"}
+                          📖 {projectedIncomeUIT <= 300 && !bypassUITLock ? "LDFS (Diario Simplificado)" : "Libro Diario Completo"}
                         </button>
                         <button
                           type="button"
@@ -3469,7 +3596,7 @@ export default function App() {
                               : 'border-transparent text-slate-400 hover:text-slate-650'
                           }`}
                         >
-                          🗂️ Libro Mayor {projectedIncomeUIT <= 300 && "🔒"}
+                          🗂️ Libro Mayor {projectedIncomeUIT <= 300 && !bypassUITLock && "🔒"}
                         </button>
                       </>
                     )}
@@ -3496,7 +3623,7 @@ export default function App() {
                             : 'border-transparent text-slate-400 hover:text-slate-650'
                         }`}
                       >
-                        📋 Inventarios y Balances {projectedIncomeUIT <= 500 && "🔒"}
+                        📋 Inventarios y Balances {projectedIncomeUIT <= 500 && !bypassUITLock && "🔒"}
                       </button>
                     )}
 
@@ -3812,7 +3939,7 @@ export default function App() {
 
                 {selectedDiarioTab === 'mayor' && regimen === 'RMT' && (
                   <div className="space-y-4 animate-fadeIn">
-                    {projectedIncomeUIT <= 300 ? (
+                    {projectedIncomeUIT <= 300 && !bypassUITLock ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-3xl p-8 text-center space-y-4 shadow-3xs max-w-2xl mx-auto my-6 animate-fadeIn">
                         <div className="w-16 h-16 bg-indigo-50 text-indigo-650 rounded-full flex items-center justify-center mx-auto text-3xl shadow-sm border border-indigo-100">
                           🔒
@@ -4072,10 +4199,10 @@ export default function App() {
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
                               <div>
                                 <span className="text-[9px] bg-indigo-500/30 text-indigo-300 font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider block w-fit mb-1">
-                                  HERRAMIENTA DIDÁCTICA
+                                  PLANIFICACIÓN Y PREVISIÓN
                                 </span>
                                 <h3 className="text-base font-bold font-heading text-white flex items-center gap-1.5">
-                                  <span>💡 Simulador de Decisiones para Negocios</span>
+                                  <span>💡 Planificador de Escenarios y Decisiones</span>
                                 </h3>
                               </div>
                               <span className="text-[11px] text-slate-400 font-sans">
@@ -4156,7 +4283,7 @@ export default function App() {
                             {simulatedAction && (
                               <div className="bg-slate-850/80 border border-slate-800/80 rounded-2xl p-4.5 text-xs text-slate-200 space-y-1.5 animate-fadeIn">
                                 <div className="font-bold text-yellow-400 flex items-center gap-1">
-                                  <span>✨ Explicación de la simulación activa:</span>
+                                  <span>✨ Análisis del escenario proyectado:</span>
                                 </div>
                                 {simulatedAction === 'VENTA_EFECTIVO' && (
                                   <p className="leading-relaxed">
@@ -4282,7 +4409,7 @@ export default function App() {
                                         <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                           <span>{modoSencillo ? "Efectivo y Bancos" : "Caja y Bancos (Cta. 10)"}</span>
                                           {simulatedAction && (simulatedAction === 'VENTA_EFECTIVO' || simulatedAction === 'COBRO_EFECTIVO' || simulatedAction === 'PAGO_IMPUESTOS') && (
-                                            <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Simulado</span>
+                                            <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Proyectado</span>
                                           )}
                                         </div>
                                         <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
@@ -4305,7 +4432,7 @@ export default function App() {
                                         <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                           <span>{modoSencillo ? "Dinero por Cobrar" : "Clientes por Cobrar (Cta. 12)"}</span>
                                           {simulatedAction && (simulatedAction === 'COBRO_EFECTIVO') && (
-                                            <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Simulado</span>
+                                            <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Proyectado</span>
                                           )}
                                         </div>
                                         <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
@@ -4328,7 +4455,7 @@ export default function App() {
                                         <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                           <span>{modoSencillo ? "Mercadería en Stock" : "Almacén e Inventario (Cta. 20)"}</span>
                                           {simulatedAction && (simulatedAction === 'COMPRA_CREDITO') && (
-                                            <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Simulado</span>
+                                            <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Proyectado</span>
                                           )}
                                         </div>
                                         <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
@@ -4381,7 +4508,7 @@ export default function App() {
                                           <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                             <span>{modoSencillo ? "Impuestos SUNAT" : "Tributos por Pagar (Cta. 40)"}</span>
                                             {simulatedAction && (simulatedAction === 'VENTA_EFECTIVO' || simulatedAction === 'COMPRA_CREDITO' || simulatedAction === 'PAGO_IMPUESTOS') && (
-                                              <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Simulado</span>
+                                              <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Proyectado</span>
                                             )}
                                           </div>
                                           <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
@@ -4424,7 +4551,7 @@ export default function App() {
                                           <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                             <span>{modoSencillo ? "Deudas a Proveedores" : "Cuentas por Pagar (Cta. 42)"}</span>
                                             {simulatedAction && (simulatedAction === 'COMPRA_CREDITO') && (
-                                              <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Simulado</span>
+                                              <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Proyectado</span>
                                             )}
                                           </div>
                                           <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
@@ -4474,7 +4601,7 @@ export default function App() {
                                           <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                             <span>{modoSencillo ? "Tus Ganancias Libres" : "Utilidad neta del periodo"}</span>
                                             {simulatedAction && (simulatedAction === 'VENTA_EFECTIVO') && (
-                                              <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Simulado</span>
+                                              <span className="text-[8.5px] bg-yellow-100 text-yellow-800 px-1.5 rounded-full font-sans font-bold uppercase tracking-wider">Proyectado</span>
                                             )}
                                           </div>
                                           <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
@@ -5260,7 +5387,7 @@ export default function App() {
 
                 {selectedDiarioTab === 'inventario_balances' && regimen === 'RMT' && (
                   <div className="space-y-5 animate-fadeIn">
-                    {projectedIncomeUIT <= 500 ? (
+                    {projectedIncomeUIT <= 500 && !bypassUITLock ? (
                       <div className="bg-slate-50 border border-slate-200 rounded-3xl p-8 text-center space-y-4 shadow-3xs max-w-2xl mx-auto my-6 animate-fadeIn">
                         <div className="w-16 h-16 bg-indigo-50 text-indigo-650 rounded-full flex items-center justify-center mx-auto text-3xl shadow-sm border border-indigo-100">
                           🔒
@@ -5275,7 +5402,7 @@ export default function App() {
                           </p>
                         </div>
                         <div className="bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100/50 text-left text-xs text-indigo-900 leading-normal font-sans">
-                          💡 **¿Cómo puedo simularlo?** Puedes elevar tus ingresos proyectados anuales en el widget de la barra lateral izquierda a más de 500 UIT y el sistema habilitará este reporte estructurado en tiempo real para simular tu balance anual complejo.
+                          💡 **¿Cómo puedo habilitarlo?** Puedes elevar tus ingresos proyectados anuales en el widget de la barra lateral izquierda a más de 500 UIT y el sistema habilitará este reporte estructurado en tiempo real para visualizar tu balance anual complejo.
                         </div>
                         <p className="text-[10.5px] text-slate-400 italic font-sans">
                           Asegura el cumplimiento tributario de tu negocio manteniendo al día el Registro de Compras, Ventas y el Libro Diario Simplificado.
@@ -6028,6 +6155,7 @@ export default function App() {
                   {activeModal === 'COBRO' && 'Registrar cobro'}
                   {activeModal === 'PAGO' && 'Registrar pago'}
                   {activeModal === 'TRANSFERENCIA' && 'Movimiento de caja/banco'}
+                  {activeModal === 'APERTURA' && 'Registrar aporte de capital'}
                 </h3>
                 <p className="text-xs text-slate-400">
                   {activeModal === 'VENTA' && 'Cuando la empresa vende productos o servicios'}
@@ -6035,6 +6163,7 @@ export default function App() {
                   {activeModal === 'COBRO' && 'Registro de ingreso de dinero de facturas pendientes'}
                   {activeModal === 'PAGO' && 'Registro de egreso de dinero para cancelar obligaciones'}
                   {activeModal === 'TRANSFERENCIA' && 'Transferencias internas de dinero entre cuentas de la empresa'}
+                  {activeModal === 'APERTURA' && 'Registro de aporte de capital social de socios en efectivo o transferencia'}
                 </p>
               </div>
               <button 
@@ -6056,9 +6185,10 @@ export default function App() {
                     activeModal === 'VENTA' ? 'bg-emerald-100 text-emerald-800' :
                     activeModal === 'COMPRA' ? 'bg-indigo-100 text-indigo-800' :
                     activeModal === 'COBRO' ? 'bg-teal-100 text-teal-800' :
-                    activeModal === 'PAGO' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                    activeModal === 'PAGO' ? 'bg-rose-100 text-rose-800' :
+                    activeModal === 'TRANSFERENCIA' ? 'bg-amber-100 text-amber-800' : 'bg-purple-100 text-purple-800'
                   }`}>
-                    {activeModal}
+                    {activeModal === 'APERTURA' ? 'APORTE CAPITAL' : activeModal}
                   </span>
                 </div>
                 <button
@@ -6115,7 +6245,7 @@ export default function App() {
                             <option value="Declaración Importación" className="dark:bg-slate-900">Declaración Aduanera (DAM)</option>
                           </>
                         )}
-                        {(activeModal === 'COBRO' || activeModal === 'PAGO' || activeModal === 'TRANSFERENCIA') && (
+                        {(activeModal === 'COBRO' || activeModal === 'PAGO' || activeModal === 'TRANSFERENCIA' || activeModal === 'APERTURA') && (
                           <>
                             <option value="Recibo de Caja" className="dark:bg-slate-900">Recibo de Caja</option>
                             <option value="Voucher Bancario" className="dark:bg-slate-900">Voucher de Depósito / Transferencia</option>
@@ -6145,7 +6275,7 @@ export default function App() {
                       <div className="md:col-span-4 animate-fadeIn">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                            {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'RUC / DNI Cliente' : 'RUC / DNI Proveedor'}
+                            {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'RUC / DNI Cliente' : activeModal === 'APERTURA' ? 'RUC / DNI Socio' : 'RUC / DNI Proveedor'}
                           </label>
                           <button
                             type="button"
@@ -6186,7 +6316,7 @@ export default function App() {
                       {/* CLIENTE / RAZÓN SOCIAL */}
                       <div className="md:col-span-8 animate-fadeIn">
                         <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">
-                          {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'Cliente / Razón Social' : 'Proveedor / Razón Social'}
+                          {activeModal === 'VENTA' || activeModal === 'COBRO' ? 'Cliente / Razón Social' : activeModal === 'APERTURA' ? 'Socio / Nombre Completo' : 'Proveedor / Razón Social'}
                         </label>
                         <input 
                           type="text" 
@@ -6547,8 +6677,8 @@ export default function App() {
                     montoDetraccion: detVal,
                     sujetoRetencion,
                     montoRetencion: retVal,
-                    cuentaOrigen: activeModal === 'COBRO' ? '1212' : activeModal === 'PAGO' ? '4212' : mCuentaDinero,
-                    cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : mObservaciones,
+                    cuentaOrigen: activeModal === 'COBRO' ? '1212' : activeModal === 'PAGO' ? '4212' : activeModal === 'APERTURA' ? '5011' : mCuentaDinero,
+                    cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : activeModal === 'APERTURA' ? mCuentaDinero : mObservaciones,
                   };
 
                   if (activeModal === 'TRANSFERENCIA') {

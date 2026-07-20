@@ -944,7 +944,7 @@ export const exportToPDF = (
 
       <!-- FOOTER TRIBUTARIO -->
       <div class="mt-12 pt-4 border-t border-slate-200 text-center text-slate-400 text-[8px] font-medium leading-relaxed">
-        Declaración Informativa Simulada de carácter Contable en estricto cumplimiento del Plan Contable General Empresarial (PCGE) de la República del Perú.
+        Reporte de Declaración Informativa de carácter Contable en estricto cumplimiento del Plan Contable General Empresarial (PCGE) de la República del Perú.
         <br>
         Todo cuadre contable responde a la teoría de partida doble regulada por los PCGE vigentes de la SUNAT.
       </div>

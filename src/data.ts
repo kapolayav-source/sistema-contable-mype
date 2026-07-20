@@ -452,13 +452,15 @@ export const generateSeatsFromTransaction = (tx: Transaction): AccountingEntry[]
     ];
   } else if (tipo === 'APERTURA') {
     // Capital initialization setup
+    const cDestino = tx.cuentaDestino || '101';
+    const getAccountName = (cta: string) => PCGE_MYPE.find(a => a.cta === cta)?.desc || 'Caja - Efectivo';
     rawEntries = [
       {
         asientoId: id,
         fecha,
         glosa,
-        cuenta: '101',
-        cuentaNombre: 'Caja - Efectivo',
+        cuenta: cDestino,
+        cuentaNombre: getAccountName(cDestino),
         debe: total,
         haber: 0
       },

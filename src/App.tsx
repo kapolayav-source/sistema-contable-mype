@@ -3926,14 +3926,35 @@ export default function App() {
                                         </span>
                                       </td>
                                       <td className="py-3 px-2 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => setSelectedVentaComprobante(s)}
-                                          className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 mx-auto cursor-pointer"
-                                          title="Ver Comprobante Electrónico (SUNAT PDF)"
-                                        >
-                                          📄 Comprobante
-                                        </button>
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedVentaComprobante(s)}
+                                            className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 cursor-pointer"
+                                            title="Ver Comprobante Electrónico (SUNAT PDF)"
+                                          >
+                                            📄 Comprobante
+                                          </button>
+                                          {currentUserRole === 'EMPLEADO' ? (
+                                            <button 
+                                              type="button"
+                                              onClick={() => handleRemoveTransaction(s.id)}
+                                              className="text-amber-500 hover:text-amber-600 p-1.5 rounded-lg border border-amber-200 bg-amber-50/50 transition-colors cursor-pointer"
+                                              title="Acceso Bloqueado: Su rango es Empleado"
+                                            >
+                                              <Lock className="w-3.5 h-3.5" />
+                                            </button>
+                                          ) : (
+                                            <button 
+                                              type="button"
+                                              onClick={() => handleRemoveTransaction(s.id)}
+                                              className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
+                                              title="Eliminar venta de los libros"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
                                       </td>
                                     </tr>
                                   );
@@ -4034,6 +4055,7 @@ export default function App() {
                             <th className="py-3 px-3 text-right">{modoSencillo ? "IGV a tu Favor" : "IGV (18%)"}</th>
                             <th className="py-3 px-3 text-right">{modoSencillo ? "Gasto Total" : "Total Soles"}</th>
                             <th className="py-3 px-2 text-center">Estado</th>
+                            <th className="py-3 px-2 text-center">Acciones</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
@@ -4047,7 +4069,7 @@ export default function App() {
                             if (purchases.length === 0) {
                               return (
                                 <tr>
-                                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">No hay registros de compras para este periodo.</td>
+                                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">No hay registros de compras para este periodo.</td>
                                 </tr>
                               );
                             }
@@ -4078,6 +4100,27 @@ export default function App() {
                                           {s.isExtornado ? 'Anulado' : 'Aceptado'}
                                         </span>
                                       </td>
+                                      <td className="py-3 px-2 text-center">
+                                        {currentUserRole === 'EMPLEADO' ? (
+                                          <button 
+                                            type="button"
+                                            onClick={() => handleRemoveTransaction(s.id)}
+                                            className="text-amber-500 hover:text-amber-600 p-1.5 rounded-lg border border-amber-200 bg-amber-50/50 transition-colors cursor-pointer"
+                                            title="Acceso Bloqueado: Su rango es Empleado"
+                                          >
+                                            <Lock className="w-3.5 h-3.5 mx-auto" />
+                                          </button>
+                                        ) : (
+                                          <button 
+                                            type="button"
+                                            onClick={() => handleRemoveTransaction(s.id)}
+                                            className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
+                                            title="Eliminar compra de los libros"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 mx-auto" />
+                                          </button>
+                                        )}
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -4086,6 +4129,7 @@ export default function App() {
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalBase.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalIgv.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-indigo-700 text-sm">S/. {totalSol.toFixed(2)}</td>
+                                  <td></td>
                                   <td></td>
                                 </tr>
                               </>

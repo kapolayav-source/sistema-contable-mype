@@ -28,7 +28,9 @@ import {
   Lock,
   Unlock,
   LogOut,
-  User
+  User,
+  Menu,
+  X
 } from 'lucide-react';
 import { Transaction, AccountingEntry, PCGEAccount, ChatMessage, UserRole, CompanyConfig } from './types';
 import { PCGE_MYPE, INITIAL_TRANSACTIONS, generateSeatsFromTransaction, PRESET_QUESTIONS, MONTHS_LIST, getSUNATDeadline } from './data';
@@ -251,6 +253,8 @@ export default function App() {
     }
   });
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
   const [simulatedAction, setSimulatedAction] = useState<string | null>(null);
 
   // PCGE Custom Selected Account details
@@ -294,7 +298,6 @@ export default function App() {
   const [regimen] = useState<'RER' | 'RMT'>('RMT');
 
   // --- Real-Time Monitoring (Real Collaborative Data Feed) ---
-  const [isRealTimeSimulating, setIsRealTimeSimulating] = useState<boolean>(false);
 
   const realTimeFeed = React.useMemo(() => {
     // Return last 15 real transactions formatted for the feed
@@ -1323,7 +1326,7 @@ export default function App() {
           // If not found, create a customized default for this user
           userCompanyConfig = {
             ruc: finalRuc,
-            razonSocial: localStorage.getItem('mype_company_name_' + finalRuc) || (finalRuc === '20601234567' ? 'Empresa de Servicios Demo SAC' : `MYPE RUC ${finalRuc} S.A.C.`),
+            razonSocial: localStorage.getItem('mype_company_name_' + finalRuc) || (finalRuc === '20601234567' ? 'Empresa de Servicios Generales SAC' : `MYPE RUC ${finalRuc} S.A.C.`),
             direccion: 'Av. Las Flores 450, San Isidro, Lima, Perú',
             telefono: '(01) 456-7890',
             correo: 'contacto@empresamype.pe',
@@ -2399,18 +2402,36 @@ export default function App() {
   return (
     <div className={`min-h-screen flex font-sans transition-colors duration-300 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-700'}`}>
       
-      {/* SIDEBAR IZQUIERDO FIJO (240px de ancho) */}
-      <div className="w-[240px] h-screen sticky top-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-4 shrink-0 shadow-xs">
+      {/* Backdrop overlay for mobile */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR IZQUIERDO RESPONSIVO */}
+      <div className={`fixed inset-y-0 left-0 z-45 md:sticky md:z-auto w-[240px] h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between p-4 shrink-0 shadow-xs transition-transform duration-300 md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         {/* TOP BLOCK */}
         <div className="space-y-4">
-          {/* Logo en texto plano */}
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-heading font-black text-lg tracking-tight text-slate-900 dark:text-white">Kipurev</span>
-              <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/40 uppercase">RMT</span>
+          {/* Logo en texto plano y botón cerrar en móvil */}
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-heading font-black text-lg tracking-tight text-slate-900 dark:text-white">Kipurev</span>
+                <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/40 uppercase">RMT</span>
+              </div>
+              {/* RUC de la empresa */}
+              <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1 font-bold">RUC: {companyConfig.ruc}</div>
             </div>
-            {/* RUC de la empresa */}
-            <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-1 font-bold">RUC: {companyConfig.ruc}</div>
+            {/* Close button for mobile sidebar */}
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none cursor-pointer"
+              title="Cerrar menú"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Rol actual de acceso */}
@@ -2459,6 +2480,7 @@ export default function App() {
               onClick={() => {
                 setActiveTab('Inicio');
                 setModuloActivo('menu');
+                setMobileMenuOpen(false);
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                 activeTab === 'Inicio'
@@ -2475,6 +2497,7 @@ export default function App() {
                 setActiveTab('SIRE');
                 setModuloActivo('libros');
                 setSelectedDiarioTab('ventas');
+                setMobileMenuOpen(false);
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                 activeTab === 'SIRE'
@@ -2490,6 +2513,7 @@ export default function App() {
               onClick={() => {
                 setActiveTab('Impuestos');
                 setModuloActivo('impuestos');
+                setMobileMenuOpen(false);
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                 activeTab === 'Impuestos'
@@ -2505,6 +2529,7 @@ export default function App() {
               onClick={() => {
                 setActiveTab('Simulador');
                 setModuloActivo('simulador');
+                setMobileMenuOpen(false);
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                 activeTab === 'Simulador'
@@ -2520,6 +2545,7 @@ export default function App() {
               onClick={() => {
                 setActiveTab('Configuracion');
                 setModuloActivo('configuracion');
+                setMobileMenuOpen(false);
               }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
                 activeTab === 'Configuracion'
@@ -2550,7 +2576,10 @@ export default function App() {
           </div>
 
           <button 
-            onClick={handleLogout}
+            onClick={() => {
+              handleLogout();
+              setMobileMenuOpen(false);
+            }}
             className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/25 transition-all flex items-center gap-2 cursor-pointer border border-transparent hover:border-red-150/10"
             title="Cerrar Sesión SOL"
           >
@@ -2565,17 +2594,28 @@ export default function App() {
 
         {/* TOP HEADER COMPONENT */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-5 border-b border-slate-200/60 dark:border-slate-800/80 gap-4">
-          <div>
-            <h2 className="font-heading font-black text-lg text-slate-900 dark:text-white uppercase tracking-tight">
-              {activeTab === 'Inicio' && 'Dashboard Principal'}
-              {activeTab === 'SIRE' && 'Libros Electrónicos SIRE'}
-              {activeTab === 'Impuestos' && 'Cálculo de Impuestos MYPE'}
-              {activeTab === 'Simulador' && 'Planificación y Solvencia Financiera'}
-              {activeTab === 'Configuracion' && 'Configuración de Empresa & Empleados'}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {companyConfig.razonSocial} • RUC {companyConfig.ruc}
-            </p>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            {/* Hamburger button for mobile */}
+            <button
+              onClick={() => setMobileMenuOpen(prev => !prev)}
+              className="md:hidden p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
+              title="Abrir menú"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h2 className="font-heading font-black text-lg text-slate-900 dark:text-white uppercase tracking-tight">
+                {activeTab === 'Inicio' && 'Dashboard Principal'}
+                {activeTab === 'SIRE' && 'Libros Electrónicos SIRE'}
+                {activeTab === 'Impuestos' && 'Cálculo de Impuestos MYPE'}
+                {activeTab === 'Simulador' && 'Planificación y Solvencia Financiera'}
+                {activeTab === 'Configuracion' && 'Configuración de Empresa & Empleados'}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {companyConfig.razonSocial} • RUC {companyConfig.ruc}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -6790,7 +6830,7 @@ export default function App() {
               {activeToast.message}
             </p>
             <div className="flex justify-between items-center mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500">MYPE en Vivo</span>
+              <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500">Estado del Sistema</span>
               <span className={`text-[11px] font-black font-mono ${activeToast.tipo === 'VENTA' ? 'text-blue-600 dark:text-blue-400' : 'text-red-500 dark:text-red-400'}`}>
                 {activeToast.tipo === 'VENTA' ? '+' : '-'}S/. {activeToast.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </span>

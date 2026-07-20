@@ -18,10 +18,10 @@ interface ConfiguracionEmpresaProps {
 
 export const DEFAULT_COMPANY_CONFIG: CompanyConfig = {
   ruc: '20601234567',
-  razonSocial: 'Empresa de Servicios Demo SAC',
+  razonSocial: 'Empresa de Servicios Generales SAC',
   direccion: 'Av. Las Flores 450, San Isidro, Lima, Perú',
   telefono: '(01) 456-7890',
-  correo: 'contacto@empresademo.pe',
+  correo: 'contacto@empresamype.pe',
   representanteLegal: 'Carlos Mendoza Ramos'
 };
 
@@ -139,7 +139,7 @@ export function ConfiguracionEmpresa({
 
   const handleDeleteUser = async (usuarioSolToDelete: string) => {
     if (usuarioSolToDelete.toUpperCase() === 'GERENTE_MYPE') {
-      alert('No se puede eliminar el usuario Gerente raíz del sistema de demostración.');
+      alert('No se puede eliminar el usuario Gerente raíz del sistema principal.');
       return;
     }
 

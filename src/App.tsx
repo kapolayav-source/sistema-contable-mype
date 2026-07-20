@@ -568,7 +568,9 @@ export default function App() {
           glosa: typeof tx.glosa === 'string' ? tx.glosa : '',
           rucClienteProveedor: typeof tx.rucClienteProveedor === 'string' ? tx.rucClienteProveedor : '',
           montoDetraccion: tx.montoDetraccion !== undefined ? (Number(tx.montoDetraccion) || 0) : undefined,
-          montoRetencion: tx.montoRetencion !== undefined ? (Number(tx.montoRetencion) || 0) : undefined
+          montoRetencion: tx.montoRetencion !== undefined ? (Number(tx.montoRetencion) || 0) : undefined,
+          condicionPago: tx.condicionPago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? (tx.glosa.toLowerCase().includes('crédito') ? 'Crédito' : 'Contado') : undefined),
+          estadoPago: tx.estadoPago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? (tx.glosa.toLowerCase().includes('crédito') ? 'Pendiente' : 'Pagado') : undefined)
         }));
         setTransactions(mapped);
         prevTransactionsRef.current = mapped;
@@ -630,6 +632,8 @@ export default function App() {
               tipoInventario: tx.tipo_inventario as any,
               montoDetraccion: tx.monto_detraccion ? Number(tx.monto_detraccion) : undefined,
               montoRetencion: tx.monto_retencion ? Number(tx.monto_retencion) : undefined,
+              condicionPago: tx.condicion_pago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? ((tx.glosa || '').toLowerCase().includes('crédito') ? 'Crédito' : 'Contado') : undefined),
+              estadoPago: tx.estado_pago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? ((tx.glosa || '').toLowerCase().includes('crédito') ? 'Pendiente' : 'Pagado') : undefined),
             };
           });
 
@@ -1061,28 +1065,10 @@ export default function App() {
     .filter(e => e.cuenta.startsWith('20'))
     .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
-  const equiposIntangibles = entries
-    .filter(e => e.cuenta.startsWith('33') || e.cuenta.startsWith('34'))
-    .reduce((sum, e) => sum + (e.debe - e.haber), 0);
-
-  // Split IGV into credit or debit
-  const igvDebito = entries
-    .filter(e => e.cuenta === '40111')
-    .reduce((sum, e) => sum + e.haber, 0);
-
-  const igvCredito = entries
-    .filter(e => e.cuenta === '40111')
-    .reduce((sum, e) => sum + e.debe, 0);
-
-  const netIGV = igvDebito - igvCredito;
-  const impuestosPorCobrar = netIGV < 0 ? -netIGV : 0;
-  const igvPorPagar = netIGV > 0 ? netIGV : 0;
-
-  const otrosTributos = entries
-    .filter(e => e.cuenta.startsWith('40') && e.cuenta !== '40111')
+  // --- PASIVO ---
+  const tributos = entries
+    .filter(e => e.cuenta.startsWith('40'))
     .reduce((sum, e) => sum + (e.haber - e.debe), 0);
-
-  const tributos = igvPorPagar + otrosTributos;
 
   const planillas = entries
     .filter(e => e.cuenta.startsWith('41'))
@@ -1095,10 +1081,6 @@ export default function App() {
   // --- PATRIMONIO ---
   const capitalSocial = entries
     .filter(e => e.cuenta.startsWith('50'))
-    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
-
-  const resultadosAcumulados = entries
-    .filter(e => e.cuenta.startsWith('59'))
     .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
   const ingresos = entries
@@ -1115,56 +1097,33 @@ export default function App() {
   let cajaBancosSim = cajaBancos;
   let ctasPorCobrarSim = ctasPorCobrar;
   let mercaderiasSim = mercaderias;
-  let equiposIntangiblesSim = equiposIntangibles;
-  let impuestosPorCobrarSim = impuestosPorCobrar;
   let tributosSim = tributos;
   let planillasSim = planillas;
   let ctasPorPagarSim = ctasPorPagar;
   let capitalSocialSim = capitalSocial;
-  let resultadosAcumuladosSim = resultadosAcumulados;
   let ingresosSim = ingresos;
   let gastosSim = gastos;
 
   if (simulatedAction === 'VENTA_EFECTIVO') {
     cajaBancosSim += 2000;
-    ingresosSim += 1694.92;
-    const simNetIGV = (igvDebito + 305.08) - igvCredito;
-    if (simNetIGV < 0) {
-      impuestosPorCobrarSim = -simNetIGV;
-      tributosSim = otrosTributos;
-    } else {
-      impuestosPorCobrarSim = 0;
-      tributosSim = simNetIGV + otrosTributos;
-    }
+    ingresosSim += 1694.92; // sin IGV
+    tributosSim += 305.08; // 18% IGV de venta
   } else if (simulatedAction === 'COMPRA_CREDITO') {
-    mercaderiasSim += 847.46;
-    const simNetIGV = igvDebito - (igvCredito + 152.54);
-    if (simNetIGV < 0) {
-      impuestosPorCobrarSim = -simNetIGV;
-      tributosSim = otrosTributos;
-    } else {
-      impuestosPorCobrarSim = 0;
-      tributosSim = simNetIGV + otrosTributos;
-    }
-    ctasPorPagarSim += 1000;
+    mercaderiasSim += 847.46; // sin IGV
+    tributosSim -= 152.54; // crédito fiscal reduce tributos a pagar
+    ctasPorPagarSim += 1000; // deudas
   } else if (simulatedAction === 'COBRO_EFECTIVO') {
     cajaBancosSim += 500;
     ctasPorCobrarSim -= 500;
   } else if (simulatedAction === 'PAGO_IMPUESTOS') {
     cajaBancosSim -= 300;
-    if (tributosSim >= 300) {
-      tributosSim -= 300;
-    } else {
-      const diff = 300 - tributosSim;
-      tributosSim = 0;
-      impuestosPorCobrarSim += diff;
-    }
+    tributosSim -= 300;
   }
 
   const utilidadNetoSim = ingresosSim - gastosSim;
-  const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim + equiposIntangiblesSim + impuestosPorCobrarSim;
+  const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim;
   const totalPasivosSim = tributosSim + planillasSim + ctasPorPagarSim;
-  const totalPatrimonioSim = capitalSocialSim + resultadosAcumuladosSim + utilidadNetoSim;
+  const totalPatrimonioSim = capitalSocialSim + utilidadNetoSim;
   const totalPasivoYPatrimonioSim = totalPasivosSim + totalPatrimonioSim;
   const balancesCuadranSim = Math.abs(totalActivosSim - totalPasivoYPatrimonioSim) < 0.01;
 
@@ -1685,6 +1644,8 @@ export default function App() {
       cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : activeModal === 'APERTURA' ? mCuentaDinero : mObservaciones, // For transfers we hold the dest account
       formaPago: mFormaPago,
       observaciones: mObservaciones,
+      condicionPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mCondicionOperacion : undefined,
+      estadoPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mEstadoPago : undefined,
 
       // Inventory / Stock / Kardex fields
       catalogItemId: matchedCatalogItem ? matchedCatalogItem.id : undefined,
@@ -3926,35 +3887,14 @@ export default function App() {
                                         </span>
                                       </td>
                                       <td className="py-3 px-2 text-center">
-                                        <div className="flex items-center justify-center gap-1.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => setSelectedVentaComprobante(s)}
-                                            className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 cursor-pointer"
-                                            title="Ver Comprobante Electrónico (SUNAT PDF)"
-                                          >
-                                            📄 Comprobante
-                                          </button>
-                                          {currentUserRole === 'EMPLEADO' ? (
-                                            <button 
-                                              type="button"
-                                              onClick={() => handleRemoveTransaction(s.id)}
-                                              className="text-amber-500 hover:text-amber-600 p-1.5 rounded-lg border border-amber-200 bg-amber-50/50 transition-colors cursor-pointer"
-                                              title="Acceso Bloqueado: Su rango es Empleado"
-                                            >
-                                              <Lock className="w-3.5 h-3.5" />
-                                            </button>
-                                          ) : (
-                                            <button 
-                                              type="button"
-                                              onClick={() => handleRemoveTransaction(s.id)}
-                                              className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
-                                              title="Eliminar venta de los libros"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                          )}
-                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedVentaComprobante(s)}
+                                          className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 mx-auto cursor-pointer"
+                                          title="Ver Comprobante Electrónico (SUNAT PDF)"
+                                        >
+                                          📄 Comprobante
+                                        </button>
                                       </td>
                                     </tr>
                                   );
@@ -4055,7 +3995,6 @@ export default function App() {
                             <th className="py-3 px-3 text-right">{modoSencillo ? "IGV a tu Favor" : "IGV (18%)"}</th>
                             <th className="py-3 px-3 text-right">{modoSencillo ? "Gasto Total" : "Total Soles"}</th>
                             <th className="py-3 px-2 text-center">Estado</th>
-                            <th className="py-3 px-2 text-center">Acciones</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
@@ -4069,7 +4008,7 @@ export default function App() {
                             if (purchases.length === 0) {
                               return (
                                 <tr>
-                                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">No hay registros de compras para este periodo.</td>
+                                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">No hay registros de compras para este periodo.</td>
                                 </tr>
                               );
                             }
@@ -4100,27 +4039,6 @@ export default function App() {
                                           {s.isExtornado ? 'Anulado' : 'Aceptado'}
                                         </span>
                                       </td>
-                                      <td className="py-3 px-2 text-center">
-                                        {currentUserRole === 'EMPLEADO' ? (
-                                          <button 
-                                            type="button"
-                                            onClick={() => handleRemoveTransaction(s.id)}
-                                            className="text-amber-500 hover:text-amber-600 p-1.5 rounded-lg border border-amber-200 bg-amber-50/50 transition-colors cursor-pointer"
-                                            title="Acceso Bloqueado: Su rango es Empleado"
-                                          >
-                                            <Lock className="w-3.5 h-3.5 mx-auto" />
-                                          </button>
-                                        ) : (
-                                          <button 
-                                            type="button"
-                                            onClick={() => handleRemoveTransaction(s.id)}
-                                            className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
-                                            title="Eliminar compra de los libros"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 mx-auto" />
-                                          </button>
-                                        )}
-                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -4129,7 +4047,6 @@ export default function App() {
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalBase.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalIgv.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-indigo-700 text-sm">S/. {totalSol.toFixed(2)}</td>
-                                  <td></td>
                                   <td></td>
                                 </tr>
                               </>
@@ -4276,58 +4193,44 @@ export default function App() {
                       const entries = allPeriodEntries;
                       
                       // --- ACTIVO ---
+                      // Cash/Bank: accounts starting with '10'
                       const cajaBancos = entries
                         .filter(e => e.cuenta.startsWith('10'))
                         .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
+                      // Accounts receivable: accounts starting with '12'
                       const ctasPorCobrar = entries
                         .filter(e => e.cuenta.startsWith('12'))
                         .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
+                      // Inventories: accounts starting with '20'
                       const mercaderias = entries
                         .filter(e => e.cuenta.startsWith('20'))
                         .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
-                      const equiposIntangibles = entries
-                        .filter(e => e.cuenta.startsWith('33') || e.cuenta.startsWith('34'))
-                        .reduce((sum, e) => sum + (e.debe - e.haber), 0);
-
-                      // Split IGV into credit or debit
-                      const igvDebito = entries
-                        .filter(e => e.cuenta === '40111')
-                        .reduce((sum, e) => sum + e.haber, 0);
-
-                      const igvCredito = entries
-                        .filter(e => e.cuenta === '40111')
-                        .reduce((sum, e) => sum + e.debe, 0);
-
-                      const netIGV = igvDebito - igvCredito;
-                      const impuestosPorCobrar = netIGV < 0 ? -netIGV : 0;
-                      const igvPorPagar = netIGV > 0 ? netIGV : 0;
-
-                      const otrosTributos = entries
-                        .filter(e => e.cuenta.startsWith('40') && e.cuenta !== '40111')
+                      // --- PASIVO ---
+                      // Taxes payable: accounts starting with '40'
+                      const tributos = entries
+                        .filter(e => e.cuenta.startsWith('40'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
-                      const tributos = igvPorPagar + otrosTributos;
-
+                      // Salaries payable: accounts starting with '41'
                       const planillas = entries
                         .filter(e => e.cuenta.startsWith('41'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
+                      // Accounts payable: accounts starting with '42'
                       const ctasPorPagar = entries
                         .filter(e => e.cuenta.startsWith('42'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
                       // --- PATRIMONIO ---
+                      // Capital: accounts starting with '50'
                       const capitalSocial = entries
                         .filter(e => e.cuenta.startsWith('50'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
-                      const resultadosAcumulados = entries
-                        .filter(e => e.cuenta.startsWith('59'))
-                        .reduce((sum, e) => sum + (e.haber - e.debe), 0);
-
+                      // Net Profit (Revenues - Expenses)
                       const ingresos = entries
                         .filter(e => e.cuenta.startsWith('7'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
@@ -4342,56 +4245,33 @@ export default function App() {
                       let cajaBancosSim = cajaBancos;
                       let ctasPorCobrarSim = ctasPorCobrar;
                       let mercaderiasSim = mercaderias;
-                      let equiposIntangiblesSim = equiposIntangibles;
-                      let impuestosPorCobrarSim = impuestosPorCobrar;
                       let tributosSim = tributos;
                       let planillasSim = planillas;
                       let ctasPorPagarSim = ctasPorPagar;
                       let capitalSocialSim = capitalSocial;
-                      let resultadosAcumuladosSim = resultadosAcumulados;
                       let ingresosSim = ingresos;
                       let gastosSim = gastos;
 
                       if (simulatedAction === 'VENTA_EFECTIVO') {
                         cajaBancosSim += 2000;
-                        ingresosSim += 1694.92;
-                        const simNetIGV = (igvDebito + 305.08) - igvCredito;
-                        if (simNetIGV < 0) {
-                          impuestosPorCobrarSim = -simNetIGV;
-                          tributosSim = otrosTributos;
-                        } else {
-                          impuestosPorCobrarSim = 0;
-                          tributosSim = simNetIGV + otrosTributos;
-                        }
+                        ingresosSim += 1694.92; // sin IGV
+                        tributosSim += 305.08; // 18% IGV de venta
                       } else if (simulatedAction === 'COMPRA_CREDITO') {
-                        mercaderiasSim += 847.46;
-                        const simNetIGV = igvDebito - (igvCredito + 152.54);
-                        if (simNetIGV < 0) {
-                          impuestosPorCobrarSim = -simNetIGV;
-                          tributosSim = otrosTributos;
-                        } else {
-                          impuestosPorCobrarSim = 0;
-                          tributosSim = simNetIGV + otrosTributos;
-                        }
-                        ctasPorPagarSim += 1000;
+                        mercaderiasSim += 847.46; // sin IGV
+                        tributosSim -= 152.54; // crédito fiscal reduce tributos a pagar
+                        ctasPorPagarSim += 1000; // deuda total
                       } else if (simulatedAction === 'COBRO_EFECTIVO') {
                         cajaBancosSim += 500;
                         ctasPorCobrarSim -= 500;
                       } else if (simulatedAction === 'PAGO_IMPUESTOS') {
                         cajaBancosSim -= 300;
-                        if (tributosSim >= 300) {
-                          tributosSim -= 300;
-                        } else {
-                          const diff = 300 - tributosSim;
-                          tributosSim = 0;
-                          impuestosPorCobrarSim += diff;
-                        }
+                        tributosSim -= 300;
                       }
 
                       const utilidadNetoSim = ingresosSim - gastosSim;
-                      const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim + equiposIntangiblesSim + impuestosPorCobrarSim;
+                      const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim;
                       const totalPasivosSim = tributosSim + planillasSim + ctasPorPagarSim;
-                      const totalPatrimonioSim = capitalSocialSim + resultadosAcumuladosSim + utilidadNetoSim;
+                      const totalPatrimonioSim = capitalSocialSim + utilidadNetoSim;
                       const totalPasivoYPatrimonioSim = totalPasivosSim + totalPatrimonioSim;
                       const balancesCuadranSim = Math.abs(totalActivosSim - totalPasivoYPatrimonioSim) < 0.01;
 
@@ -4710,49 +4590,6 @@ export default function App() {
                                       S/. {mercaderiasSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                                     </span>
                                   </div>
-
-                                  {/* Equipos y Licencias Card */}
-                                  <div className="flex justify-between items-start p-3 hover:bg-slate-50 rounded-2xl transition-all border border-slate-100 shadow-3xs">
-                                    <div className="flex items-start gap-2.5">
-                                      <div className="text-lg mt-0.5 bg-slate-50 w-7 h-7 rounded-lg flex items-center justify-center border border-slate-100">💻</div>
-                                      <div>
-                                        <div className="font-bold text-slate-800">
-                                          <span>{modoSencillo ? "Equipos, Laptops y Licencias" : "Activos Fijos e Intangibles (Cta. 33/34)"}</span>
-                                        </div>
-                                        <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
-                                          {modoSencillo 
-                                            ? "Laptops, servidores, software o licencias que usa tu negocio." 
-                                            : "Adquisiciones de propiedad, planta, equipos (33) e intangibles (34)."}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <span className="font-mono font-bold text-slate-900 text-right mt-1">
-                                      S/. {equiposIntangiblesSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                                    </span>
-                                  </div>
-
-                                  {/* Impuestos por Cobrar (Crédito Fiscal IGV) Card */}
-                                  {impuestosPorCobrarSim > 0 && (
-                                    <div className="flex justify-between items-start p-3 bg-emerald-50/40 hover:bg-emerald-50 rounded-2xl transition-all border border-emerald-100 shadow-3xs animate-fadeIn">
-                                      <div className="flex items-start gap-2.5">
-                                        <div className="text-lg mt-0.5 bg-emerald-100/50 w-7 h-7 rounded-lg flex items-center justify-center border border-emerald-100 text-emerald-700">⚖️</div>
-                                        <div>
-                                          <div className="font-bold text-emerald-900 flex items-center gap-1.5">
-                                            <span>{modoSencillo ? "Crédito Fiscal a Favor (IGV)" : "Impuestos por Cobrar (Cta. 40 - Crédito)"}</span>
-                                            <span className="text-[8.5px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-sans font-bold uppercase tracking-wider">Activo</span>
-                                          </div>
-                                          <p className="text-[10px] text-emerald-600/80 font-sans leading-relaxed mt-0.5 max-w-[240px]">
-                                            {modoSencillo 
-                                              ? "IGV de tus compras que supera al de tus ventas; te sirve para no pagar IGV en los próximos meses." 
-                                              : "Saldo a favor del Crédito Fiscal del IGV (40111) acumulado por compras."}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <span className="font-mono font-bold text-emerald-700 text-right mt-1">
-                                        S/. {impuestosPorCobrarSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                                      </span>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
 
@@ -4874,26 +4711,6 @@ export default function App() {
                                       </div>
                                       <span className="font-mono font-bold text-slate-900 text-right mt-1">
                                         S/. {capitalSocialSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                                      </span>
-                                    </div>
-
-                                    {/* Resultados Acumulados Card */}
-                                    <div className="flex justify-between items-start p-3 hover:bg-slate-50 rounded-2xl transition-all border border-slate-100 shadow-3xs">
-                                      <div className="flex items-start gap-2.5">
-                                        <div className="text-lg mt-0.5 bg-slate-50 w-7 h-7 rounded-lg flex items-center justify-center border border-slate-100">⚖️</div>
-                                        <div>
-                                          <div className="font-bold text-slate-800">
-                                            {modoSencillo ? "Resultados Acumulados / Dividendos" : "Resultados Acumulados (Cta. 59)"}
-                                          </div>
-                                          <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
-                                            {modoSencillo 
-                                              ? "Utilidades de años anteriores o retiros de socios realizados directamente." 
-                                              : "Resultados acumulados de periodos anteriores y efectos de retiros de dividendos (5911/592)."}
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <span className="font-mono font-bold text-slate-900 text-right mt-1">
-                                        S/. {resultadosAcumuladosSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                                       </span>
                                     </div>
 
@@ -6983,6 +6800,8 @@ export default function App() {
                     montoRetencion: retVal,
                     cuentaOrigen: activeModal === 'COBRO' ? '1212' : activeModal === 'PAGO' ? '4212' : activeModal === 'APERTURA' ? '5011' : mCuentaDinero,
                     cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : activeModal === 'APERTURA' ? mCuentaDinero : mObservaciones,
+                    condicionPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mCondicionOperacion : undefined,
+                    estadoPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mEstadoPago : undefined,
                   };
 
                   if (activeModal === 'TRANSFERENCIA') {

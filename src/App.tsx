@@ -1796,8 +1796,21 @@ export default function App() {
       });
       
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Error en la comunicación con el servidor contable.');
+        let errMsg = 'Error en la comunicación con el servidor contable.';
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch {
+          try {
+            const rawText = await response.text();
+            if (rawText && rawText.length < 200) {
+              errMsg = `Error (${response.status}): ${rawText}`;
+            } else {
+              errMsg = `Error del servidor (${response.status}).`;
+            }
+          } catch {}
+        }
+        throw new Error(errMsg);
       }
       
       const result = await response.json();

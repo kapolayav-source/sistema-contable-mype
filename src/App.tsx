@@ -3102,7 +3102,7 @@ export default function App() {
                     setActiveTab('Configuracion');
                     setModuloActivo('configuracion');
                   }}
-                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-slate-400 hover:shadow-lg hover:scale-[1.01] md:col-span-2 lg:col-span-1`}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-slate-400 hover:shadow-lg hover:scale-[1.01]`}
                 >
                   <div className="flex justify-between items-start mb-4">
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-2xl shadow-xs">
@@ -3121,6 +3121,36 @@ export default function App() {
                   <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 font-mono uppercase">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                     Gestionar Nombre, RUC y Equipo
+                  </div>
+                </button>
+
+                {/* TARJETA 6: Importador Inteligente de Documentos con IA */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('SIRE');
+                    setModuloActivo('libros');
+                    setSelectedDiarioTab('importador');
+                  }}
+                  className={`group relative text-left p-6 rounded-3xl border transition-all duration-300 cursor-pointer ${cardBg} hover:border-emerald-500/50 hover:shadow-lg hover:scale-[1.01]`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center text-2xl shadow-xs">
+                      🤖
+                    </div>
+                    <span className="text-[10px] font-black tracking-wider bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 uppercase px-2.5 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/40 animate-pulse">
+                      ¡NUEVO!
+                    </span>
+                  </div>
+                  <h3 className={`font-black text-sm tracking-tight font-heading mb-1.5 ${mainTitleColor}`}>
+                    🤖 Importador de Documentos con IA
+                  </h3>
+                  <p className={`text-xs leading-relaxed ${subtitleColor}`}>
+                    Sube un archivo **PDF** (con todas tus facturas, boletas, notas o compras del mes) o un archivo de **Excel** para que el Asistente Inteligente extraiga e integre todas las operaciones en el sistema automáticamente.
+                  </p>
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Gemini Flash Integrado
                   </div>
                 </button>
               </div>
@@ -3647,6 +3677,33 @@ export default function App() {
                   <p className="text-xs text-slate-400 dark:text-slate-450 mb-4 font-sans">Haz clic en cualquier botón para abrir el formulario especializado de registro contable en tiempo real.</p>
 
                   <div className="space-y-2.5">
+                    {/* IA IMPORT PDF/EXCEL BUTTON */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDiarioTab('importador');
+                        const el = document.getElementById('libro-diario-box');
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      }}
+                      className="w-full text-left p-3.5 rounded-2xl border-2 border-emerald-500/30 hover:border-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/15 dark:bg-emerald-500/5 dark:hover:bg-emerald-500/10 transition-all cursor-pointer flex justify-between items-center group shadow-md shadow-emerald-500/5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="bg-emerald-600 text-white w-9 h-9 rounded-xl flex items-center justify-center font-bold text-base shadow-sm shadow-emerald-600/20 animate-pulse">
+                          🤖
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-emerald-850 dark:text-emerald-400 flex items-center gap-1.5">
+                            <span>Asistente de Importación IA</span>
+                            <span className="text-[8px] bg-emerald-600 text-white font-black px-1.5 py-0.2 rounded-full font-sans uppercase">Súper Rápido</span>
+                          </h4>
+                          <p className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 font-sans font-medium">Sube tu PDF o Excel de operaciones aquí</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-emerald-600 text-white font-black px-2.5 py-0.5 rounded-full group-hover:translate-x-0.5 transition-transform font-sans">Sube PDF →</span>
+                    </button>
+
                     {/* VENTA */}
                     <button
                       type="button"

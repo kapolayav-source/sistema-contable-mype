@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
@@ -108,6 +108,124 @@ CRITICAL - MODO SENCILLO ACTIVADO: El usuario es un emprendedor peruano promedio
       console.error('Error en el servicio de Gemini:', error);
       res.status(500).json({
         error: error.message || 'Ocurrió un error interno en el servidor contable.',
+        isApiKeyMissing: error.message?.includes('GEMINI_API_KEY')
+      });
+    }
+  });
+
+  // API Route to parse transactions from documents (PDF, Excel table text, Word text) using Gemini
+  app.post('/api/parse-document', async (req, res) => {
+    try {
+      const { text, fileBase64, fileMimeType } = req.body;
+      
+      let contents: any[] = [];
+      let prompt = `Eres un asistente contable peruano de nivel experto. Tu tarea es analizar el contenido de entrada de un documento (ya sea texto extraído de Excel/Word o un archivo de comprobante PDF oficial) y extraer una lista estructurada de transacciones para el Régimen MYPE Tributario.
+
+Sigue estrictamente estas pautas contables:
+1. Identifica para cada transacción si es 'VENTA', 'COMPRA', 'PLANILLA', o 'APERTURA'.
+2. Extrae la fecha en formato exacto 'YYYY-MM-DD'. Si la fecha no especifica el año, asume el año actual (2026).
+3. Identifica la serie y el número de documento si existen (ej. F001-0012, E001-445, B002-3923). Si no se detalla, genera uno realista.
+4. Identifica el RUC de 11 dígitos y el Nombre o Razón Social del Cliente/Proveedor. Si no se detalla, crea uno realista para el Perú.
+5. Obtén o calcula el 'montoBase' (base imponible sin IGV), el 'igv' (18% de la base si aplica, o 0 si está inafecto o exonerado como en planillas o algunos servicios), y el 'total' (montoBase + igv).
+6. Escribe una glosa contable breve pero descriptiva en español (ej. "Venta de productos de oficina", "Servicio de transporte de carga").
+
+Devuelve la lista de transacciones dentro del objeto de respuesta JSON.`;
+
+      if (fileBase64 && fileMimeType) {
+        // PDF or Image mode
+        contents.push({
+          parts: [
+            {
+              inlineData: {
+                data: fileBase64,
+                mimeType: fileMimeType
+              }
+            },
+            { text: `${prompt}\n\nAnaliza este archivo de comprobante adjunto y extrae las transacciones correspondientes.` }
+          ]
+        });
+      } else if (text) {
+        // Text mode (Excel parsed text, Word copy-pasted text)
+        contents.push({
+          parts: [
+            { text: `${prompt}\n\nAquí tienes el texto del documento para analizar:\n\n${text}` }
+          ]
+        });
+      } else {
+        return res.status(400).json({ error: 'Debes proporcionar un texto o un archivo en formato base64 para poder realizar la extracción contable.' });
+      }
+
+      const ai = getGeminiClient();
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: contents,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              transactions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    fecha: {
+                      type: Type.STRING,
+                      description: "Fecha de la operación en formato YYYY-MM-DD."
+                    },
+                    tipo: {
+                      type: Type.STRING,
+                      description: "Tipo de transacción: VENTA, COMPRA, PLANILLA, o APERTURA"
+                    },
+                    montoBase: {
+                      type: Type.NUMBER,
+                      description: "Monto imponible neto (sin IGV) en soles."
+                    },
+                    igv: {
+                      type: Type.NUMBER,
+                      description: "IGV (18% del montoBase) en soles. Pon 0 si no aplica o si es planilla."
+                    },
+                    total: {
+                      type: Type.NUMBER,
+                      description: "Monto total (montoBase + igv) en soles."
+                    },
+                    glosa: {
+                      type: Type.STRING,
+                      description: "Glosa breve explicando la transacción."
+                    },
+                    rucClienteProveedor: {
+                      type: Type.STRING,
+                      description: "RUC de 11 dígitos del cliente o proveedor involucrado. Si no lo hay, inventa uno peruano realista."
+                    },
+                    clienteProveedorNombre: {
+                      type: Type.STRING,
+                      description: "Razón social o nombre completo del cliente o proveedor."
+                    },
+                    documento: {
+                      type: Type.STRING,
+                      description: "Serie y número de comprobante de pago (ej. F001-00234) o inventa uno si no existe."
+                    }
+                  },
+                  required: ["fecha", "tipo", "montoBase", "igv", "total", "glosa", "rucClienteProveedor", "clienteProveedorNombre", "documento"]
+                }
+              }
+            },
+            required: ["transactions"]
+          }
+        }
+      });
+
+      const responseText = response.text;
+      if (!responseText) {
+        throw new Error('Gemini no devolvió un JSON válido o la respuesta está vacía.');
+      }
+
+      const parsedResult = JSON.parse(responseText.trim());
+      res.json(parsedResult);
+    } catch (error: any) {
+      console.error('Error al procesar el documento con IA:', error);
+      res.status(500).json({
+        error: error.message || 'Error al procesar el documento con el motor contable de IA.',
         isApiKeyMissing: error.message?.includes('GEMINI_API_KEY')
       });
     }

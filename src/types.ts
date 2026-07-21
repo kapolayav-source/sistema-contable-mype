@@ -34,7 +34,8 @@ export interface Transaction {
   comprobanteRefId?: string; // Reference to sale/purchase being paid/collected
   formaPago?: string;        // Efectivo, Transferencia, Tarjeta, etc.
   observaciones?: string;    // Notas administrativas
-  condicionPago?: 'Contado' | 'Crédito';
+  tipoComprobante?: string;  // e.g., "Factura", "Boleta", "Nota de Crédito", "Recibo de Honorarios"
+  condicionOperacion?: 'Contado' | 'Crédito';
   estadoPago?: 'Pagado' | 'Pendiente';
   
   // Custom tracking for Inventory / Stock / Kardex

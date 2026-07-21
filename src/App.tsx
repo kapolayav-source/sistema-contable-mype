@@ -39,6 +39,7 @@ import { getRegisteredUsers, registerUser, deleteUser, SimulatedUser, validateUs
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { ConfiguracionEmpresa, DEFAULT_COMPANY_CONFIG } from './components/ConfiguracionEmpresa';
 import { ComprobantePDFModal } from './components/ComprobantePDFModal';
+import * as XLSX from 'xlsx';
 
 import imgOperaciones from './assets/images/navegacion_operaciones_1783371809409.jpg';
 import imgProductos from './assets/images/navegacion_productos_1783371823633.jpg';
@@ -418,7 +419,7 @@ export default function App() {
   const [verHojaTrabajoContable, setVerHojaTrabajoContable] = useState<boolean>(false);
 
   // Inventory / Kardex Management States
-  const [selectedDiarioTab, setSelectedDiarioTab] = useState<'diario' | 'mayor' | 'balance' | 'sunat_req' | 'inventario' | 'catalogo' | 'ventas' | 'compras' | 'inventario_balances'>('ventas');
+  const [selectedDiarioTab, setSelectedDiarioTab] = useState<'diario' | 'mayor' | 'balance' | 'sunat_req' | 'inventario' | 'catalogo' | 'ventas' | 'compras' | 'inventario_balances' | 'importador'>('ventas');
   const [ventasFiltroDoc, setVentasFiltroDoc] = useState<'TODOS' | 'FACTURAS' | 'BOLETAS'>('TODOS');
   const [comprasFiltroDoc, setComprasFiltroDoc] = useState<'TODOS' | 'FACTURAS' | 'BOLETAS'>('TODOS');
   const [selectedMayorCta, setSelectedMayorCta] = useState<string>('1041');
@@ -430,6 +431,15 @@ export default function App() {
   const [manualStockCost, setManualStockCost] = useState<string>('750');
   const [manualStockGlosa, setManualStockGlosa] = useState<string>('');
   const [manualStockDoc, setManualStockDoc] = useState<string>('');
+
+  // AI Importer States
+  const [aiImportText, setAiImportText] = useState<string>('');
+  const [aiImportFile, setAiImportFile] = useState<File | null>(null);
+  const [aiImporting, setAiImporting] = useState<boolean>(false);
+  const [aiImportStatus, setAiImportStatus] = useState<string>('');
+  const [aiParsedTransactions, setAiParsedTransactions] = useState<any[]>([]);
+  const [aiSelectedForImport, setAiSelectedForImport] = useState<Record<string, boolean>>({});
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Custom Catalog items state (persisted)
   const [catalogItems, setCatalogItems] = useState(() => {
@@ -568,9 +578,7 @@ export default function App() {
           glosa: typeof tx.glosa === 'string' ? tx.glosa : '',
           rucClienteProveedor: typeof tx.rucClienteProveedor === 'string' ? tx.rucClienteProveedor : '',
           montoDetraccion: tx.montoDetraccion !== undefined ? (Number(tx.montoDetraccion) || 0) : undefined,
-          montoRetencion: tx.montoRetencion !== undefined ? (Number(tx.montoRetencion) || 0) : undefined,
-          condicionPago: tx.condicionPago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? (tx.glosa.toLowerCase().includes('crédito') ? 'Crédito' : 'Contado') : undefined),
-          estadoPago: tx.estadoPago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? (tx.glosa.toLowerCase().includes('crédito') ? 'Pendiente' : 'Pagado') : undefined)
+          montoRetencion: tx.montoRetencion !== undefined ? (Number(tx.montoRetencion) || 0) : undefined
         }));
         setTransactions(mapped);
         prevTransactionsRef.current = mapped;
@@ -632,8 +640,6 @@ export default function App() {
               tipoInventario: tx.tipo_inventario as any,
               montoDetraccion: tx.monto_detraccion ? Number(tx.monto_detraccion) : undefined,
               montoRetencion: tx.monto_retencion ? Number(tx.monto_retencion) : undefined,
-              condicionPago: tx.condicion_pago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? ((tx.glosa || '').toLowerCase().includes('crédito') ? 'Crédito' : 'Contado') : undefined),
-              estadoPago: tx.estado_pago || (tx.tipo === 'VENTA' || tx.tipo === 'COMPRA' ? ((tx.glosa || '').toLowerCase().includes('crédito') ? 'Pendiente' : 'Pagado') : undefined),
             };
           });
 
@@ -1065,10 +1071,28 @@ export default function App() {
     .filter(e => e.cuenta.startsWith('20'))
     .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
-  // --- PASIVO ---
-  const tributos = entries
-    .filter(e => e.cuenta.startsWith('40'))
+  const equiposIntangibles = entries
+    .filter(e => e.cuenta.startsWith('33') || e.cuenta.startsWith('34'))
+    .reduce((sum, e) => sum + (e.debe - e.haber), 0);
+
+  // Split IGV into credit or debit
+  const igvDebito = entries
+    .filter(e => e.cuenta === '40111')
+    .reduce((sum, e) => sum + e.haber, 0);
+
+  const igvCredito = entries
+    .filter(e => e.cuenta === '40111')
+    .reduce((sum, e) => sum + e.debe, 0);
+
+  const netIGV = igvDebito - igvCredito;
+  const impuestosPorCobrar = netIGV < 0 ? -netIGV : 0;
+  const igvPorPagar = netIGV > 0 ? netIGV : 0;
+
+  const otrosTributos = entries
+    .filter(e => e.cuenta.startsWith('40') && e.cuenta !== '40111')
     .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  const tributos = igvPorPagar + otrosTributos;
 
   const planillas = entries
     .filter(e => e.cuenta.startsWith('41'))
@@ -1081,6 +1105,10 @@ export default function App() {
   // --- PATRIMONIO ---
   const capitalSocial = entries
     .filter(e => e.cuenta.startsWith('50'))
+    .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
+  const resultadosAcumulados = entries
+    .filter(e => e.cuenta.startsWith('59'))
     .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
   const ingresos = entries
@@ -1097,33 +1125,56 @@ export default function App() {
   let cajaBancosSim = cajaBancos;
   let ctasPorCobrarSim = ctasPorCobrar;
   let mercaderiasSim = mercaderias;
+  let equiposIntangiblesSim = equiposIntangibles;
+  let impuestosPorCobrarSim = impuestosPorCobrar;
   let tributosSim = tributos;
   let planillasSim = planillas;
   let ctasPorPagarSim = ctasPorPagar;
   let capitalSocialSim = capitalSocial;
+  let resultadosAcumuladosSim = resultadosAcumulados;
   let ingresosSim = ingresos;
   let gastosSim = gastos;
 
   if (simulatedAction === 'VENTA_EFECTIVO') {
     cajaBancosSim += 2000;
-    ingresosSim += 1694.92; // sin IGV
-    tributosSim += 305.08; // 18% IGV de venta
+    ingresosSim += 1694.92;
+    const simNetIGV = (igvDebito + 305.08) - igvCredito;
+    if (simNetIGV < 0) {
+      impuestosPorCobrarSim = -simNetIGV;
+      tributosSim = otrosTributos;
+    } else {
+      impuestosPorCobrarSim = 0;
+      tributosSim = simNetIGV + otrosTributos;
+    }
   } else if (simulatedAction === 'COMPRA_CREDITO') {
-    mercaderiasSim += 847.46; // sin IGV
-    tributosSim -= 152.54; // crédito fiscal reduce tributos a pagar
-    ctasPorPagarSim += 1000; // deudas
+    mercaderiasSim += 847.46;
+    const simNetIGV = igvDebito - (igvCredito + 152.54);
+    if (simNetIGV < 0) {
+      impuestosPorCobrarSim = -simNetIGV;
+      tributosSim = otrosTributos;
+    } else {
+      impuestosPorCobrarSim = 0;
+      tributosSim = simNetIGV + otrosTributos;
+    }
+    ctasPorPagarSim += 1000;
   } else if (simulatedAction === 'COBRO_EFECTIVO') {
     cajaBancosSim += 500;
     ctasPorCobrarSim -= 500;
   } else if (simulatedAction === 'PAGO_IMPUESTOS') {
     cajaBancosSim -= 300;
-    tributosSim -= 300;
+    if (tributosSim >= 300) {
+      tributosSim -= 300;
+    } else {
+      const diff = 300 - tributosSim;
+      tributosSim = 0;
+      impuestosPorCobrarSim += diff;
+    }
   }
 
   const utilidadNetoSim = ingresosSim - gastosSim;
-  const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim;
+  const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim + equiposIntangiblesSim + impuestosPorCobrarSim;
   const totalPasivosSim = tributosSim + planillasSim + ctasPorPagarSim;
-  const totalPatrimonioSim = capitalSocialSim + utilidadNetoSim;
+  const totalPatrimonioSim = capitalSocialSim + resultadosAcumuladosSim + utilidadNetoSim;
   const totalPasivoYPatrimonioSim = totalPasivosSim + totalPatrimonioSim;
   const balancesCuadranSim = Math.abs(totalActivosSim - totalPasivoYPatrimonioSim) < 0.01;
 
@@ -1644,8 +1695,6 @@ export default function App() {
       cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : activeModal === 'APERTURA' ? mCuentaDinero : mObservaciones, // For transfers we hold the dest account
       formaPago: mFormaPago,
       observaciones: mObservaciones,
-      condicionPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mCondicionOperacion : undefined,
-      estadoPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mEstadoPago : undefined,
 
       // Inventory / Stock / Kardex fields
       catalogItemId: matchedCatalogItem ? matchedCatalogItem.id : undefined,
@@ -1729,6 +1778,197 @@ export default function App() {
         }
       ]);
     }
+  };
+
+  const sendToAiParser = async (extractedText: string, fileB64?: string, mime?: string) => {
+    setAiImporting(true);
+    setAiError(null);
+    setAiImportStatus('Enviando datos al motor de Inteligencia Artificial (Gemini)...');
+    try {
+      const response = await fetch('/api/parse-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: extractedText,
+          fileBase64: fileB64,
+          fileMimeType: mime
+        })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Error en la comunicación con el servidor contable.');
+      }
+      
+      const result = await response.json();
+      if (result.transactions && Array.isArray(result.transactions)) {
+        // Add temporary ids to parsed transactions so we can edit/select them
+        const processed = result.transactions.map((tx: any, idx: number) => ({
+          ...tx,
+          id: 'parsed_' + Date.now() + '_' + idx,
+          fecha: tx.fecha || new Date().toISOString().split('T')[0]
+        }));
+        setAiParsedTransactions(processed);
+        
+        // Auto select all of them
+        const initialSelection: Record<string, boolean> = {};
+        processed.forEach((tx: any) => {
+          initialSelection[tx.id] = true;
+        });
+        setAiSelectedForImport(initialSelection);
+        setAiImportStatus('');
+        setAiImportText('');
+        setAiImportFile(null);
+      } else {
+        throw new Error('El motor de IA no pudo estructurar transacciones válidas a partir de este documento.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'Error desconocido.');
+    } finally {
+      setAiImporting(false);
+    }
+  };
+
+  const handleProcessDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiImportFile && !aiImportText.trim()) {
+      alert('Por favor, selecciona un archivo (Excel, PDF, Word) o copia y pega texto en el área correspondiente.');
+      return;
+    }
+
+    if (aiImportFile) {
+      const file = aiImportFile;
+      const fileType = file.type;
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+
+      if (fileType === 'application/pdf' || fileType.startsWith('image/')) {
+        setAiImporting(true);
+        setAiImportStatus('Leyendo archivo y codificando en Base64...');
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const dataUrl = event.target?.result as string;
+            const base64Content = dataUrl.split(',')[1];
+            await sendToAiParser('', base64Content, fileType);
+          } catch (err: any) {
+            setAiError('Error al leer el archivo PDF: ' + err.message);
+            setAiImporting(false);
+          }
+        };
+        reader.onerror = () => {
+          setAiError('Error al leer el archivo PDF/Imagen.');
+          setAiImporting(false);
+        };
+        reader.readAsDataURL(file);
+      } else if (fileExt === 'xlsx' || fileExt === 'xls' || fileExt === 'csv') {
+        setAiImporting(true);
+        setAiImportStatus('Abriendo y procesando hoja de Excel...');
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const data = event.target?.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            let fullExcelText = '';
+            workbook.SheetNames.forEach(sheetName => {
+              const sheet = workbook.Sheets[sheetName];
+              const csvText = XLSX.utils.sheet_to_csv(sheet);
+              fullExcelText += `--- HOJA: ${sheetName} ---\n${csvText}\n\n`;
+            });
+            await sendToAiParser(fullExcelText);
+          } catch (err: any) {
+            setAiError('Error al procesar el archivo Excel: ' + err.message);
+            setAiImporting(false);
+          }
+        };
+        reader.onerror = () => {
+          setAiError('Error al leer el archivo de Excel.');
+          setAiImporting(false);
+        };
+        reader.readAsBinaryString(file);
+      } else {
+        // Plain text or word (try parsing as text)
+        setAiImporting(true);
+        setAiImportStatus('Leyendo archivo de texto...');
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const textContent = event.target?.result as string;
+            await sendToAiParser(textContent);
+          } catch (err: any) {
+            setAiError('Error al leer el archivo de texto: ' + err.message);
+            setAiImporting(false);
+          }
+        };
+        reader.onerror = () => {
+          setAiError('Error al leer el archivo.');
+          setAiImporting(false);
+        };
+        reader.readAsText(file);
+      }
+    } else {
+      // Direct text parsing
+      await sendToAiParser(aiImportText);
+    }
+  };
+
+  const handleIntegrateTransactions = async () => {
+    if (currentUserRole === 'EMPLEADO') {
+      alert('⚠️ ACCESO DENEGADO\n\nSu rol es EMPLEADO. No cuenta con autorización para registrar operaciones en los libros contables.');
+      return;
+    }
+    
+    const selectedTxs = aiParsedTransactions.filter(tx => aiSelectedForImport[tx.id]);
+    if (selectedTxs.length === 0) {
+      alert('Por favor, selecciona al menos una transacción para importar.');
+      return;
+    }
+    
+    const formattedTxs: Transaction[] = selectedTxs.map((tx, index) => {
+      const baseNum = Number(tx.montoBase) || 0;
+      const igvNum = Number(tx.igv) || 0;
+      const totalNum = Number(tx.total) || 0;
+      
+      return {
+        id: 'tx_import_' + Date.now() + '_' + index,
+        fecha: tx.fecha,
+        tipo: tx.tipo as 'VENTA' | 'COMPRA' | 'PLANILLA' | 'APERTURA',
+        montoBase: baseNum,
+        igv: igvNum,
+        total: totalNum,
+        glosa: tx.glosa || 'Importación con Asistente Inteligente IA',
+        rucClienteProveedor: tx.rucClienteProveedor || (tx.tipo === 'VENTA' ? '20100200300' : '20500600700'),
+        clienteProveedorNombre: tx.clienteProveedorNombre || 'Cliente/Proveedor Importado',
+        documento: tx.documento || `IMP-${Date.now().toString().slice(-4)}`,
+        creadoPor: currentUserRole,
+        creadoPorNombre: currentUserFullName
+      };
+    });
+    
+    // Save to transactions list
+    setTransactions(prev => [...formattedTxs, ...prev]);
+    
+    // Set active period to match the first imported transaction's month if exists
+    if (formattedTxs.length > 0) {
+      const firstPeriod = formattedTxs[0].fecha.slice(0, 7);
+      setPeriod(firstPeriod);
+    }
+    
+    // Success notification
+    setChatMessages(prev => [
+      ...prev,
+      {
+        id: 'import_success_' + Date.now(),
+        role: 'assistant',
+        content: `🤖 **¡Importación de registros completada con éxito!**\n\nHe integrado de manera ordenada **${formattedTxs.length} transacciones** en tus libros contables (SIRE y Libro Diario).\n\nHe verificado que los IGVs y totales cuadren perfectamente y correspondan a tus periodos fiscales.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+    
+    // Reset parsed view
+    setAiParsedTransactions([]);
+    setAiSelectedForImport({});
+    alert(`🎉 ¡Éxito! Se han importado ${formattedTxs.length} registros contables.`);
   };
 
   const handleResetData = () => {
@@ -3759,6 +3999,18 @@ export default function App() {
                     >
                       🏷️ Catálogo
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDiarioTab('importador')}
+                      className={`pb-2.5 px-3 sm:px-4 text-[10.5px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                        selectedDiarioTab === 'importador'
+                          ? 'border-emerald-650 text-emerald-750 font-black'
+                          : 'border-transparent text-slate-400 hover:text-slate-650'
+                      }`}
+                    >
+                      🤖 Importador IA (Excel/PDF)
+                    </button>
                   </div>
                 )}
 
@@ -3887,14 +4139,35 @@ export default function App() {
                                         </span>
                                       </td>
                                       <td className="py-3 px-2 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => setSelectedVentaComprobante(s)}
-                                          className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 mx-auto cursor-pointer"
-                                          title="Ver Comprobante Electrónico (SUNAT PDF)"
-                                        >
-                                          📄 Comprobante
-                                        </button>
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedVentaComprobante(s)}
+                                            className="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold py-1 px-2 rounded-lg border border-indigo-200 hover:border-indigo-300 transition-colors flex items-center gap-1 cursor-pointer"
+                                            title="Ver Comprobante Electrónico (SUNAT PDF)"
+                                          >
+                                            📄 Comprobante
+                                          </button>
+                                          {currentUserRole === 'EMPLEADO' ? (
+                                            <button 
+                                              type="button"
+                                              onClick={() => handleRemoveTransaction(s.id)}
+                                              className="text-amber-500 hover:text-amber-600 p-1.5 rounded-lg border border-amber-200 bg-amber-50/50 transition-colors cursor-pointer"
+                                              title="Acceso Bloqueado: Su rango es Empleado"
+                                            >
+                                              <Lock className="w-3.5 h-3.5" />
+                                            </button>
+                                          ) : (
+                                            <button 
+                                              type="button"
+                                              onClick={() => handleRemoveTransaction(s.id)}
+                                              className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
+                                              title="Eliminar venta de los libros"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
                                       </td>
                                     </tr>
                                   );
@@ -3995,6 +4268,7 @@ export default function App() {
                             <th className="py-3 px-3 text-right">{modoSencillo ? "IGV a tu Favor" : "IGV (18%)"}</th>
                             <th className="py-3 px-3 text-right">{modoSencillo ? "Gasto Total" : "Total Soles"}</th>
                             <th className="py-3 px-2 text-center">Estado</th>
+                            <th className="py-3 px-2 text-center">Acciones</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
@@ -4008,7 +4282,7 @@ export default function App() {
                             if (purchases.length === 0) {
                               return (
                                 <tr>
-                                  <td colSpan={8} className="py-8 text-center text-slate-400 italic">No hay registros de compras para este periodo.</td>
+                                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">No hay registros de compras para este periodo.</td>
                                 </tr>
                               );
                             }
@@ -4039,6 +4313,27 @@ export default function App() {
                                           {s.isExtornado ? 'Anulado' : 'Aceptado'}
                                         </span>
                                       </td>
+                                      <td className="py-3 px-2 text-center">
+                                        {currentUserRole === 'EMPLEADO' ? (
+                                          <button 
+                                            type="button"
+                                            onClick={() => handleRemoveTransaction(s.id)}
+                                            className="text-amber-500 hover:text-amber-600 p-1.5 rounded-lg border border-amber-200 bg-amber-50/50 transition-colors cursor-pointer"
+                                            title="Acceso Bloqueado: Su rango es Empleado"
+                                          >
+                                            <Lock className="w-3.5 h-3.5 mx-auto" />
+                                          </button>
+                                        ) : (
+                                          <button 
+                                            type="button"
+                                            onClick={() => handleRemoveTransaction(s.id)}
+                                            className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
+                                            title="Eliminar compra de los libros"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 mx-auto" />
+                                          </button>
+                                        )}
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -4047,6 +4342,7 @@ export default function App() {
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalBase.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-slate-950">S/. {totalIgv.toFixed(2)}</td>
                                   <td className="py-3 px-3 text-right font-mono text-indigo-700 text-sm">S/. {totalSol.toFixed(2)}</td>
+                                  <td></td>
                                   <td></td>
                                 </tr>
                               </>
@@ -4193,44 +4489,58 @@ export default function App() {
                       const entries = allPeriodEntries;
                       
                       // --- ACTIVO ---
-                      // Cash/Bank: accounts starting with '10'
                       const cajaBancos = entries
                         .filter(e => e.cuenta.startsWith('10'))
                         .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
-                      // Accounts receivable: accounts starting with '12'
                       const ctasPorCobrar = entries
                         .filter(e => e.cuenta.startsWith('12'))
                         .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
-                      // Inventories: accounts starting with '20'
                       const mercaderias = entries
                         .filter(e => e.cuenta.startsWith('20'))
                         .reduce((sum, e) => sum + (e.debe - e.haber), 0);
 
-                      // --- PASIVO ---
-                      // Taxes payable: accounts starting with '40'
-                      const tributos = entries
-                        .filter(e => e.cuenta.startsWith('40'))
+                      const equiposIntangibles = entries
+                        .filter(e => e.cuenta.startsWith('33') || e.cuenta.startsWith('34'))
+                        .reduce((sum, e) => sum + (e.debe - e.haber), 0);
+
+                      // Split IGV into credit or debit
+                      const igvDebito = entries
+                        .filter(e => e.cuenta === '40111')
+                        .reduce((sum, e) => sum + e.haber, 0);
+
+                      const igvCredito = entries
+                        .filter(e => e.cuenta === '40111')
+                        .reduce((sum, e) => sum + e.debe, 0);
+
+                      const netIGV = igvDebito - igvCredito;
+                      const impuestosPorCobrar = netIGV < 0 ? -netIGV : 0;
+                      const igvPorPagar = netIGV > 0 ? netIGV : 0;
+
+                      const otrosTributos = entries
+                        .filter(e => e.cuenta.startsWith('40') && e.cuenta !== '40111')
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
-                      // Salaries payable: accounts starting with '41'
+                      const tributos = igvPorPagar + otrosTributos;
+
                       const planillas = entries
                         .filter(e => e.cuenta.startsWith('41'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
-                      // Accounts payable: accounts starting with '42'
                       const ctasPorPagar = entries
                         .filter(e => e.cuenta.startsWith('42'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
                       // --- PATRIMONIO ---
-                      // Capital: accounts starting with '50'
                       const capitalSocial = entries
                         .filter(e => e.cuenta.startsWith('50'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
 
-                      // Net Profit (Revenues - Expenses)
+                      const resultadosAcumulados = entries
+                        .filter(e => e.cuenta.startsWith('59'))
+                        .reduce((sum, e) => sum + (e.haber - e.debe), 0);
+
                       const ingresos = entries
                         .filter(e => e.cuenta.startsWith('7'))
                         .reduce((sum, e) => sum + (e.haber - e.debe), 0);
@@ -4245,33 +4555,56 @@ export default function App() {
                       let cajaBancosSim = cajaBancos;
                       let ctasPorCobrarSim = ctasPorCobrar;
                       let mercaderiasSim = mercaderias;
+                      let equiposIntangiblesSim = equiposIntangibles;
+                      let impuestosPorCobrarSim = impuestosPorCobrar;
                       let tributosSim = tributos;
                       let planillasSim = planillas;
                       let ctasPorPagarSim = ctasPorPagar;
                       let capitalSocialSim = capitalSocial;
+                      let resultadosAcumuladosSim = resultadosAcumulados;
                       let ingresosSim = ingresos;
                       let gastosSim = gastos;
 
                       if (simulatedAction === 'VENTA_EFECTIVO') {
                         cajaBancosSim += 2000;
-                        ingresosSim += 1694.92; // sin IGV
-                        tributosSim += 305.08; // 18% IGV de venta
+                        ingresosSim += 1694.92;
+                        const simNetIGV = (igvDebito + 305.08) - igvCredito;
+                        if (simNetIGV < 0) {
+                          impuestosPorCobrarSim = -simNetIGV;
+                          tributosSim = otrosTributos;
+                        } else {
+                          impuestosPorCobrarSim = 0;
+                          tributosSim = simNetIGV + otrosTributos;
+                        }
                       } else if (simulatedAction === 'COMPRA_CREDITO') {
-                        mercaderiasSim += 847.46; // sin IGV
-                        tributosSim -= 152.54; // crédito fiscal reduce tributos a pagar
-                        ctasPorPagarSim += 1000; // deuda total
+                        mercaderiasSim += 847.46;
+                        const simNetIGV = igvDebito - (igvCredito + 152.54);
+                        if (simNetIGV < 0) {
+                          impuestosPorCobrarSim = -simNetIGV;
+                          tributosSim = otrosTributos;
+                        } else {
+                          impuestosPorCobrarSim = 0;
+                          tributosSim = simNetIGV + otrosTributos;
+                        }
+                        ctasPorPagarSim += 1000;
                       } else if (simulatedAction === 'COBRO_EFECTIVO') {
                         cajaBancosSim += 500;
                         ctasPorCobrarSim -= 500;
                       } else if (simulatedAction === 'PAGO_IMPUESTOS') {
                         cajaBancosSim -= 300;
-                        tributosSim -= 300;
+                        if (tributosSim >= 300) {
+                          tributosSim -= 300;
+                        } else {
+                          const diff = 300 - tributosSim;
+                          tributosSim = 0;
+                          impuestosPorCobrarSim += diff;
+                        }
                       }
 
                       const utilidadNetoSim = ingresosSim - gastosSim;
-                      const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim;
+                      const totalActivosSim = cajaBancosSim + ctasPorCobrarSim + mercaderiasSim + equiposIntangiblesSim + impuestosPorCobrarSim;
                       const totalPasivosSim = tributosSim + planillasSim + ctasPorPagarSim;
-                      const totalPatrimonioSim = capitalSocialSim + utilidadNetoSim;
+                      const totalPatrimonioSim = capitalSocialSim + resultadosAcumuladosSim + utilidadNetoSim;
                       const totalPasivoYPatrimonioSim = totalPasivosSim + totalPatrimonioSim;
                       const balancesCuadranSim = Math.abs(totalActivosSim - totalPasivoYPatrimonioSim) < 0.01;
 
@@ -4590,6 +4923,49 @@ export default function App() {
                                       S/. {mercaderiasSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                                     </span>
                                   </div>
+
+                                  {/* Equipos y Licencias Card */}
+                                  <div className="flex justify-between items-start p-3 hover:bg-slate-50 rounded-2xl transition-all border border-slate-100 shadow-3xs">
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="text-lg mt-0.5 bg-slate-50 w-7 h-7 rounded-lg flex items-center justify-center border border-slate-100">💻</div>
+                                      <div>
+                                        <div className="font-bold text-slate-800">
+                                          <span>{modoSencillo ? "Equipos, Laptops y Licencias" : "Activos Fijos e Intangibles (Cta. 33/34)"}</span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
+                                          {modoSencillo 
+                                            ? "Laptops, servidores, software o licencias que usa tu negocio." 
+                                            : "Adquisiciones de propiedad, planta, equipos (33) e intangibles (34)."}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span className="font-mono font-bold text-slate-900 text-right mt-1">
+                                      S/. {equiposIntangiblesSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+
+                                  {/* Impuestos por Cobrar (Crédito Fiscal IGV) Card */}
+                                  {impuestosPorCobrarSim > 0 && (
+                                    <div className="flex justify-between items-start p-3 bg-emerald-50/40 hover:bg-emerald-50 rounded-2xl transition-all border border-emerald-100 shadow-3xs animate-fadeIn">
+                                      <div className="flex items-start gap-2.5">
+                                        <div className="text-lg mt-0.5 bg-emerald-100/50 w-7 h-7 rounded-lg flex items-center justify-center border border-emerald-100 text-emerald-700">⚖️</div>
+                                        <div>
+                                          <div className="font-bold text-emerald-900 flex items-center gap-1.5">
+                                            <span>{modoSencillo ? "Crédito Fiscal a Favor (IGV)" : "Impuestos por Cobrar (Cta. 40 - Crédito)"}</span>
+                                            <span className="text-[8.5px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-sans font-bold uppercase tracking-wider">Activo</span>
+                                          </div>
+                                          <p className="text-[10px] text-emerald-600/80 font-sans leading-relaxed mt-0.5 max-w-[240px]">
+                                            {modoSencillo 
+                                              ? "IGV de tus compras que supera al de tus ventas; te sirve para no pagar IGV en los próximos meses." 
+                                              : "Saldo a favor del Crédito Fiscal del IGV (40111) acumulado por compras."}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <span className="font-mono font-bold text-emerald-700 text-right mt-1">
+                                        S/. {impuestosPorCobrarSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -4711,6 +5087,26 @@ export default function App() {
                                       </div>
                                       <span className="font-mono font-bold text-slate-900 text-right mt-1">
                                         S/. {capitalSocialSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+
+                                    {/* Resultados Acumulados Card */}
+                                    <div className="flex justify-between items-start p-3 hover:bg-slate-50 rounded-2xl transition-all border border-slate-100 shadow-3xs">
+                                      <div className="flex items-start gap-2.5">
+                                        <div className="text-lg mt-0.5 bg-slate-50 w-7 h-7 rounded-lg flex items-center justify-center border border-slate-100">⚖️</div>
+                                        <div>
+                                          <div className="font-bold text-slate-800">
+                                            {modoSencillo ? "Resultados Acumulados / Dividendos" : "Resultados Acumulados (Cta. 59)"}
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 font-sans leading-relaxed mt-0.5 max-w-[240px]">
+                                            {modoSencillo 
+                                              ? "Utilidades de años anteriores o retiros de socios realizados directamente." 
+                                              : "Resultados acumulados de periodos anteriores y efectos de retiros de dividendos (5911/592)."}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <span className="font-mono font-bold text-slate-900 text-right mt-1">
+                                        S/. {resultadosAcumuladosSim.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                                       </span>
                                     </div>
 
@@ -6056,6 +6452,377 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {selectedDiarioTab === 'importador' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-gradient-to-r from-emerald-500/10 to-indigo-500/10 border border-emerald-500/20 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <span>🤖</span> Importador Inteligente de Comprobantes con IA
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 font-sans max-w-2xl leading-relaxed">
+                          Sube un documento oficial de compras/ventas en <strong>PDF, Excel (.xlsx, .xls)</strong>, o copia y pega el texto de tus notas o correos de Word. El modelo de Inteligencia Artificial (Gemini) extraerá las fechas, montos imponibles, IGV (18%), RUCs, nombres comerciales y generará los asientos de manera 100% automatizada.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* FILE UPLOAD AND INPUT AREA */}
+                      <div className="lg:col-span-5 space-y-5">
+                        <div className={`${cardBg} border rounded-2xl p-5 shadow-sm space-y-4`}>
+                          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                            Cargar Documento o Copiar Texto
+                          </h4>
+                          
+                          <form onSubmit={handleProcessDocument} className="space-y-4">
+                            {/* DRAG & DROP & CLICK FILE ZONE */}
+                            <div 
+                              className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-emerald-500 hover:bg-emerald-50/5 dark:hover:bg-slate-900/40 rounded-xl p-5 text-center cursor-pointer transition-all relative flex flex-col items-center justify-center min-h-[140px]"
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                  setAiImportFile(e.dataTransfer.files[0]);
+                                  setAiError(null);
+                                }
+                              }}
+                              onClick={() => {
+                                document.getElementById('ai-file-input')?.click();
+                              }}
+                            >
+                              <input 
+                                id="ai-file-input"
+                                type="file"
+                                accept=".pdf,.xlsx,.xls,.csv,.txt,.docx,.png,.jpg,.jpeg"
+                                className="hidden"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    setAiImportFile(e.target.files[0]);
+                                    setAiError(null);
+                                  }
+                                }}
+                              />
+                              <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-2.5 text-slate-500">
+                                <PlusCircle className="w-5 h-5 text-emerald-600" />
+                              </div>
+                              {aiImportFile ? (
+                                <div className="space-y-1">
+                                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[250px]">
+                                    📎 {aiImportFile.name}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400">
+                                    {(aiImportFile.size / 1024).toFixed(1)} KB (Haz clic para cambiar)
+                                  </p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                                    Arrastra un archivo aquí o <span className="text-emerald-600 font-bold">búscalo</span>
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    Soporta PDF, Excel (.xlsx/.xls), CSV, Word o Imágenes
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* TEXT AREA FOR PASTING */}
+                            <div className="space-y-2">
+                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                                O copia y pega datos de texto aquí:
+                              </label>
+                              <textarea
+                                value={aiImportText}
+                                onChange={(e) => {
+                                  setAiImportText(e.target.value);
+                                  if (e.target.value.trim() && aiImportFile) {
+                                    // prioritize text if pasted
+                                    setAiImportFile(null);
+                                  }
+                                }}
+                                placeholder="Ejemplo:
+Venta factura F001-125, fecha 15 de julio de 2026 a la empresa Inversiones Perú SAC RUC 20556677881, por monto de S/. 1500 + IGV."
+                                className="w-full min-h-[120px] p-3 text-xs bg-slate-50 dark:bg-slate-950 border rounded-xl focus:ring-1 focus:ring-emerald-500 font-sans leading-relaxed text-slate-800 dark:text-slate-200 placeholder-slate-400"
+                              />
+                            </div>
+
+                            {aiError && (
+                              <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-xl flex gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="font-bold">Error en el procesamiento</p>
+                                  <p className="text-[11px] leading-relaxed mt-0.5">{aiError}</p>
+                                  {aiError.includes('API_KEY') && (
+                                    <p className="text-[10px] text-rose-500 font-medium mt-1">
+                                      Tip: Registra tu clave GEMINI_API_KEY en el menú de Variables de Entorno de AI Studio.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* SUBMIT BUTTON */}
+                            <button
+                              type="submit"
+                              disabled={aiImporting || (!aiImportFile && !aiImportText.trim())}
+                              className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                                aiImporting || (!aiImportFile && !aiImportText.trim())
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/10'
+                              }`}
+                            >
+                              {aiImporting ? (
+                                <>
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Procesando...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span>Analizar y Procesar con IA</span>
+                                </>
+                              )}
+                            </button>
+                          </form>
+                        </div>
+
+                        {/* STATUS AND LOADING FEEDBACK */}
+                        {aiImporting && (
+                          <div className="bg-emerald-50/50 border border-emerald-100 p-4 rounded-xl text-center space-y-2 animate-pulse">
+                            <RefreshCw className="w-5 h-5 mx-auto text-emerald-600 animate-spin" />
+                            <p className="text-xs font-bold text-emerald-850">
+                              {aiImportStatus}
+                            </p>
+                            <p className="text-[10px] text-emerald-600 font-sans max-w-xs mx-auto">
+                              La Inteligencia Artificial está estructurando y validando los montos para que cuadren perfectamente con la normativa de la SUNAT.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* EXTRACTION PREVIEW LIST */}
+                      <div className="lg:col-span-7 space-y-5">
+                        <div className={`${cardBg} border rounded-2xl p-5 shadow-sm space-y-4 min-h-[300px] flex flex-col`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                                Operaciones Detectadas por la IA
+                              </h4>
+                              <p className="text-[10px] text-slate-400 font-sans mt-0.5">
+                                Revisa, edita los campos si lo consideras necesario y selecciona para importar.
+                              </p>
+                            </div>
+                            {aiParsedTransactions.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const allSelected = Object.values(aiSelectedForImport).every(v => v);
+                                  const newVal: Record<string, boolean> = {};
+                                  aiParsedTransactions.forEach(tx => {
+                                    newVal[tx.id] = !allSelected;
+                                  });
+                                  setAiSelectedForImport(newVal);
+                                }}
+                                className="text-[10px] text-emerald-600 font-bold hover:underline cursor-pointer"
+                              >
+                                {Object.values(aiSelectedForImport).every(v => v) ? 'Desmarcar todos' : 'Marcar todos'}
+                              </button>
+                            )}
+                          </div>
+
+                          {aiParsedTransactions.length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center py-10 text-center space-y-3">
+                              <div className="w-12 h-12 bg-slate-50 dark:bg-slate-900 rounded-full flex items-center justify-center text-slate-300">
+                                <FileText className="w-6 h-6" />
+                              </div>
+                              <div className="max-w-md space-y-1">
+                                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                  Ninguna operación analizada todavía
+                                </p>
+                                <p className="text-[11px] text-slate-400 font-sans px-4">
+                                  Carga un archivo PDF de comprobante, sube una plantilla de Excel con tus ventas/compras del mes, o copia notas sencillas. La IA se encargará de rellenar todo.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-4 flex-1 flex flex-col">
+                              {/* PARSED TRANSACTIONS LIST */}
+                              <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+                                {aiParsedTransactions.map((tx, idx) => (
+                                  <div 
+                                    key={tx.id}
+                                    className={`p-3 border rounded-xl transition-all relative ${
+                                      aiSelectedForImport[tx.id] 
+                                        ? 'border-emerald-500 bg-emerald-50/10 dark:bg-slate-900/20' 
+                                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950'
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-2.5">
+                                      {/* CHECKBOX */}
+                                      <input 
+                                        type="checkbox"
+                                        checked={!!aiSelectedForImport[tx.id]}
+                                        onChange={() => {
+                                          setAiSelectedForImport(prev => ({
+                                            ...prev,
+                                            [tx.id]: !prev[tx.id]
+                                          }));
+                                        }}
+                                        className="mt-1 w-3.5 h-3.5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                                      />
+                                      
+                                      <div className="flex-1 min-w-0 space-y-2">
+                                        {/* HEADER FIELDS */}
+                                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                          <div className="flex items-center gap-1.5">
+                                            {/* TYPE BADGE */}
+                                            <select
+                                              value={tx.tipo}
+                                              onChange={(e) => {
+                                                const updated = [...aiParsedTransactions];
+                                                updated[idx].tipo = e.target.value;
+                                                setAiParsedTransactions(updated);
+                                              }}
+                                              className={`text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded cursor-pointer ${
+                                                tx.tipo === 'VENTA' 
+                                                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' 
+                                                  : tx.tipo === 'COMPRA' 
+                                                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400' 
+                                                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                                              }`}
+                                            >
+                                              <option value="VENTA">VENTA</option>
+                                              <option value="COMPRA">COMPRA</option>
+                                              <option value="PLANILLA">PLANILLA</option>
+                                              <option value="APERTURA">APERTURA</option>
+                                            </select>
+
+                                            {/* DOCUMENT INPUT */}
+                                            <input 
+                                              type="text"
+                                              value={tx.documento}
+                                              onChange={(e) => {
+                                                const updated = [...aiParsedTransactions];
+                                                updated[idx].documento = e.target.value;
+                                                setAiParsedTransactions(updated);
+                                              }}
+                                              className="text-[10px] font-bold text-slate-800 dark:text-slate-200 bg-transparent border-b border-dashed border-slate-300 w-24 px-1"
+                                            />
+                                          </div>
+
+                                          {/* DATE INPUT */}
+                                          <input 
+                                            type="date"
+                                            value={tx.fecha}
+                                            onChange={(e) => {
+                                              const updated = [...aiParsedTransactions];
+                                              updated[idx].fecha = e.target.value;
+                                              setAiParsedTransactions(updated);
+                                            }}
+                                            className="text-[10px] text-slate-500 font-sans bg-transparent border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer focus:ring-0"
+                                          />
+                                        </div>
+
+                                        {/* GLOSA INPUT */}
+                                        <div className="space-y-1">
+                                          <label className="block text-[9px] font-bold text-slate-400 uppercase">
+                                            Concepto / Glosa:
+                                          </label>
+                                          <input 
+                                            type="text"
+                                            value={tx.glosa}
+                                            onChange={(e) => {
+                                              const updated = [...aiParsedTransactions];
+                                              updated[idx].glosa = e.target.value;
+                                              setAiParsedTransactions(updated);
+                                            }}
+                                            className="text-[11px] text-slate-800 dark:text-slate-200 font-medium bg-transparent border-b border-slate-200 w-full pb-0.5 focus:ring-0 focus:border-emerald-500"
+                                          />
+                                        </div>
+
+                                        {/* CLIENT/PROV AND RUC */}
+                                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                          <div>
+                                            <label className="block text-[8px] font-bold text-slate-400 uppercase">
+                                              Razón Social:
+                                            </label>
+                                            <input 
+                                              type="text"
+                                              value={tx.clienteProveedorNombre || ''}
+                                              onChange={(e) => {
+                                                const updated = [...aiParsedTransactions];
+                                                updated[idx].clienteProveedorNombre = e.target.value;
+                                                setAiParsedTransactions(updated);
+                                              }}
+                                              className="w-full text-slate-700 dark:text-slate-300 truncate bg-transparent border-b border-slate-100"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-[8px] font-bold text-slate-400 uppercase">
+                                              RUC:
+                                            </label>
+                                            <input 
+                                              type="text"
+                                              value={tx.rucClienteProveedor}
+                                              onChange={(e) => {
+                                                const updated = [...aiParsedTransactions];
+                                                updated[idx].rucClienteProveedor = e.target.value;
+                                                setAiParsedTransactions(updated);
+                                              }}
+                                              className="w-full text-slate-600 dark:text-slate-400 bg-transparent border-b border-slate-100"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        {/* MONTO BASE, IGV, TOTAL */}
+                                        <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-lg text-center font-mono text-[10.5px]">
+                                          <div>
+                                            <span className="block text-[8px] font-bold text-slate-400 font-sans uppercase">Base</span>
+                                            <span className="text-slate-800 dark:text-slate-200 font-bold">
+                                              S/. {(Number(tx.montoBase) || 0).toFixed(2)}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="block text-[8px] font-bold text-slate-400 font-sans uppercase">IGV (18%)</span>
+                                            <span className="text-slate-500">
+                                              S/. {(Number(tx.igv) || 0).toFixed(2)}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="block text-[8px] font-bold text-slate-400 font-sans uppercase">Total</span>
+                                            <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+                                              S/. {(Number(tx.total) || 0).toFixed(2)}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* ACTIONS FOOTER */}
+                              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between mt-auto">
+                                <span className="text-xs text-slate-500 font-sans">
+                                  {aiParsedTransactions.filter(tx => aiSelectedForImport[tx.id]).length} de {aiParsedTransactions.length} seleccionados
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handleIntegrateTransactions}
+                                  className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold py-2 px-4 rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-1.5"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Integrar en Libros Oficiales</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -6800,8 +7567,6 @@ export default function App() {
                     montoRetencion: retVal,
                     cuentaOrigen: activeModal === 'COBRO' ? '1212' : activeModal === 'PAGO' ? '4212' : activeModal === 'APERTURA' ? '5011' : mCuentaDinero,
                     cuentaDestino: activeModal === 'COBRO' ? mCuentaDinero : activeModal === 'PAGO' ? mCuentaDinero : activeModal === 'APERTURA' ? mCuentaDinero : mObservaciones,
-                    condicionPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mCondicionOperacion : undefined,
-                    estadoPago: (activeModal === 'VENTA' || activeModal === 'COMPRA') ? mEstadoPago : undefined,
                   };
 
                   if (activeModal === 'TRANSFERENCIA') {

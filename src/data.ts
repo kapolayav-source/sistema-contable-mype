@@ -96,6 +96,24 @@ export const PCGE_MYPE: PCGEAccount[] = [
     desc: 'Mercaderías - Venta nacional', 
     categoria: 'Ingreso', 
     explicacion: 'Ingresos por venta directa de productos propios del giro comercial (base imponible).' 
+  },
+  {
+    cta: '3311',
+    desc: 'Equipos y Activos Fijos - Adquisición',
+    categoria: 'Activo',
+    explicacion: 'Propiedad, planta y equipo (laptops, servidores, etc.) que posee la empresa para su uso operativo.'
+  },
+  {
+    cta: '3411',
+    desc: 'Licencias e Intangibles - Adquisición',
+    categoria: 'Activo',
+    explicacion: 'Activos intangibles adquiridos como licencias de software, patentes o marcas comerciales.'
+  },
+  {
+    cta: '5911',
+    desc: 'Resultados Acumulados - Utilidades acumuladas',
+    categoria: 'Patrimonio',
+    explicacion: 'Utilidades generadas por el negocio pendientes de distribución o retenidas para reinversión.'
   }
 ];
 
@@ -162,12 +180,51 @@ export const generateSeatsFromTransaction = (tx: Transaction): AccountingEntry[]
     montoDetraccion, 
     sujetoRetencion, 
     montoRetencion,
-    isExtornado
+    isExtornado,
+    tipoComprobante,
+    condicionOperacion,
+    estadoPago,
+    cuentaOrigen,
+    cuentaDestino
   } = tx;
   
   let rawEntries: Omit<AccountingEntry, 'id'>[] = [];
+  const glosaLower = (glosa || '').toLowerCase();
+  const compLower = (tipoComprobante || '').toLowerCase();
 
-  if (tx.esMovimientoInventario) {
+  // 1. Check for "Retiro de utilidades de socios" first
+  const isRetiroUtilidades = glosaLower.includes('retiro de utilidad') || 
+                             glosaLower.includes('retiro utilidad') || 
+                             glosaLower.includes('retiro de utilidades') || 
+                             glosaLower.includes('dividendos') || 
+                             glosaLower.includes('retiro de socios') ||
+                             compLower.includes('retiro') ||
+                             (tipo === 'PAGO' && (tx.observaciones?.toLowerCase().includes('utilidad') || tx.observaciones?.toLowerCase().includes('dividendo')));
+
+  if (isRetiroUtilidades) {
+    const cOrig = cuentaOrigen || '1041';
+    const cOrigName = PCGE_MYPE.find(a => a.cta === cOrig)?.desc || 'Cuentas corrientes bancarias';
+    rawEntries = [
+      {
+        asientoId: id,
+        fecha,
+        glosa: `${glosa} (Retiro de utilidades directo de patrimonio)`,
+        cuenta: '5911',
+        cuentaNombre: 'Resultados Acumulados - Utilidades acumuladas',
+        debe: total,
+        haber: 0
+      },
+      {
+        asientoId: id,
+        fecha,
+        glosa: `${glosa} (Desembolso de efectivo por retiro)`,
+        cuenta: cOrig,
+        cuentaNombre: cOrigName,
+        debe: 0,
+        haber: total
+      }
+    ];
+  } else if (tx.esMovimientoInventario) {
     const isIngreso = tx.tipoInventario === 'INGRESO';
     if (isIngreso) {
       rawEntries = [
@@ -213,170 +270,29 @@ export const generateSeatsFromTransaction = (tx: Transaction): AccountingEntry[]
       ];
     }
   } else if (tipo === 'VENTA') {
-    let saleEntries: Omit<AccountingEntry, 'id'>[] = [];
-    let netTotal = total;
+    const isNotaCredito = compLower === 'nota de crédito' || 
+                          compLower.includes('nota de credito') || 
+                          glosaLower.includes('nota de crédito') || 
+                          glosaLower.includes('nota de credito') || 
+                          glosaLower.includes('devolución') || 
+                          glosaLower.includes('devolucion');
 
-    if (sujetoDetraccion && montoDetraccion) {
-      netTotal = total - montoDetraccion;
-      // Net amount to collect goes to 1212, and 10% detracción sits in 1042 BN
-      saleEntries = [
+    if (isNotaCredito) {
+      // Sales Return / Credit Note (Invert standard VENTA entries: swap Debe and Haber)
+      rawEntries = [
         {
           asientoId: id,
           fecha,
-          glosa: `${glosa} (Neto por cobrar - Factura)`,
-          cuenta: '1212',
-          cuentaNombre: 'Facturas por cobrar - Emitidas',
-          debe: netTotal,
-          haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: `${glosa} (Detracción 10% en Banco Nación)`,
-          cuenta: '1042',
-          cuentaNombre: 'Cuentas corrientes - Detracciones (BN)',
-          debe: montoDetraccion,
-          haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: glosa,
-          cuenta: '40111',
-          cuentaNombre: 'IGV - Cuenta Propia (18%)',
-          debe: 0,
-          haber: igv
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: glosa,
-          cuenta: '70121',
-          cuentaNombre: 'Mercaderías - Venta nacional',
-          debe: 0,
-          haber: montoBase
-        }
-      ];
-    } else if (sujetoRetencion && montoRetencion) {
-      netTotal = total - montoRetencion;
-      // 3% retention suffered from client
-      saleEntries = [
-        {
-          asientoId: id,
-          fecha,
-          glosa: `${glosa} (Neto deducido de Retención)`,
-          cuenta: '1212',
-          cuentaNombre: 'Facturas por cobrar - Emitidas',
-          debe: netTotal,
-          haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: `${glosa} (Canje de Retención 3% SUNAT)`,
-          cuenta: '40114',
-          cuentaNombre: 'IGV - Retenciones Sufridas',
-          debe: montoRetencion,
-          haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: glosa,
-          cuenta: '40111',
-          cuentaNombre: 'IGV - Cuenta Propia (18%)',
-          debe: 0,
-          haber: igv
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: glosa,
-          cuenta: '70121',
-          cuentaNombre: 'Mercaderías - Venta nacional',
-          debe: 0,
-          haber: montoBase
-        }
-      ];
-    } else {
-      netTotal = total;
-      // Standard local sale
-      saleEntries = [
-        {
-          asientoId: id,
-          fecha,
-          glosa,
-          cuenta: '1212',
-          cuentaNombre: 'Facturas por cobrar - Emitidas',
-          debe: netTotal,
-          haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa,
-          cuenta: '40111',
-          cuentaNombre: 'IGV - Cuenta Propia (18%)',
-          debe: 0,
-          haber: igv
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa,
-          cuenta: '70121',
-          cuentaNombre: 'Mercaderías - Venta nacional',
-          debe: 0,
-          haber: montoBase
-        }
-      ];
-    }
-
-    if (tx.condicionPago === 'Contado') {
-      const getAccountName = (cta: string) => PCGE_MYPE.find(a => a.cta === cta)?.desc || 'Caja/Banco';
-      const cashAccount = tx.cuentaOrigen && tx.cuentaOrigen.startsWith('10') ? tx.cuentaOrigen : '1041';
-      saleEntries.push(
-        {
-          asientoId: id,
-          fecha,
-          glosa: `${glosa} (Cobro inmediato de factura al contado)`,
-          cuenta: cashAccount,
-          cuentaNombre: getAccountName(cashAccount),
-          debe: netTotal,
-          haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa: `${glosa} (Cobro inmediato de factura al contado)`,
+          glosa: `${glosa} (Reversa de cuentas por cobrar)`,
           cuenta: '1212',
           cuentaNombre: 'Facturas por cobrar - Emitidas',
           debe: 0,
-          haber: netTotal
-        }
-      );
-    }
-    rawEntries = saleEntries;
-  } else if (tipo === 'COMPRA') {
-    let purchaseEntries: Omit<AccountingEntry, 'id'>[] = [];
-    let netTotal = total;
-
-    if (sujetoDetraccion && montoDetraccion) {
-      netTotal = total - montoDetraccion;
-      purchaseEntries = [
-        {
-          asientoId: id,
-          fecha,
-          glosa,
-          cuenta: '6011',
-          cuentaNombre: 'Mercaderías - Compras comerciales',
-          debe: montoBase,
-          haber: 0
+          haber: total
         },
         {
           asientoId: id,
           fecha,
-          glosa,
+          glosa: `${glosa} (Reversa de IGV Débito)`,
           cuenta: '40111',
           cuentaNombre: 'IGV - Cuenta Propia (18%)',
           debe: igv,
@@ -385,11 +301,244 @@ export const generateSeatsFromTransaction = (tx: Transaction): AccountingEntry[]
         {
           asientoId: id,
           fecha,
+          glosa: `${glosa} (Reversa de ingresos)`,
+          cuenta: '70121',
+          cuentaNombre: 'Mercaderías - Venta nacional',
+          debe: montoBase,
+          haber: 0
+        }
+      ];
+
+      // If it's a cash sale return, reverse the cash flow
+      if (condicionOperacion === 'Contado' || estadoPago === 'Pagado' || tx.formaPago) {
+        const cDest = cuentaDestino || '1041';
+        const cDestName = PCGE_MYPE.find(a => a.cta === cDest)?.desc || 'Cuentas corrientes bancarias';
+        rawEntries.push(
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Reversa de Cobro - Devolución de Caja)`,
+            cuenta: '1212',
+            cuentaNombre: 'Facturas por cobrar - Emitidas',
+            debe: total,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Reversa de Cobro - Devolución de Caja)`,
+            cuenta: cDest,
+            cuentaNombre: cDestName,
+            debe: 0,
+            haber: total
+          }
+        );
+      }
+    } else {
+      // Standard VENTA
+      if (sujetoDetraccion && montoDetraccion) {
+        rawEntries = [
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Neto por cobrar - Factura)`,
+            cuenta: '1212',
+            cuentaNombre: 'Facturas por cobrar - Emitidas',
+            debe: total - montoDetraccion,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Detracción 10% en Banco Nación)`,
+            cuenta: '1042',
+            cuentaNombre: 'Cuentas corrientes - Detracciones (BN)',
+            debe: montoDetraccion,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: glosa,
+            cuenta: '40111',
+            cuentaNombre: 'IGV - Cuenta Propia (18%)',
+            debe: 0,
+            haber: igv
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: glosa,
+            cuenta: '70121',
+            cuentaNombre: 'Mercaderías - Venta nacional',
+            debe: 0,
+            haber: montoBase
+          }
+        ];
+      } else if (sujetoRetencion && montoRetencion) {
+        rawEntries = [
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Neto deducido de Retención)`,
+            cuenta: '1212',
+            cuentaNombre: 'Facturas por cobrar - Emitidas',
+            debe: total - montoRetencion,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Canje de Retención 3% SUNAT)`,
+            cuenta: '40114',
+            cuentaNombre: 'IGV - Retenciones Sufridas',
+            debe: montoRetencion,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: glosa,
+            cuenta: '40111',
+            cuentaNombre: 'IGV - Cuenta Propia (18%)',
+            debe: 0,
+            haber: igv
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: glosa,
+            cuenta: '70121',
+            cuentaNombre: 'Mercaderías - Venta nacional',
+            debe: 0,
+            haber: montoBase
+          }
+        ];
+      } else {
+        rawEntries = [
+          {
+            asientoId: id,
+            fecha,
+            glosa,
+            cuenta: '1212',
+            cuentaNombre: 'Facturas por cobrar - Emitidas',
+            debe: total,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa,
+            cuenta: '40111',
+            cuentaNombre: 'IGV - Cuenta Propia (18%)',
+            debe: 0,
+            haber: igv
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa,
+            cuenta: '70121',
+            cuentaNombre: 'Mercaderías - Venta nacional',
+            debe: 0,
+            haber: montoBase
+          }
+        ];
+      }
+
+      // If VENTA is "al contado", register the immediate collection (cobro)
+      if (condicionOperacion === 'Contado' || estadoPago === 'Pagado' || tx.formaPago) {
+        const cDest = cuentaDestino || '1041';
+        const cDestName = PCGE_MYPE.find(a => a.cta === cDest)?.desc || 'Cuentas corrientes bancarias';
+        const collectAmount = (sujetoDetraccion && montoDetraccion) ? (total - montoDetraccion) : total;
+        rawEntries.push(
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Cobro de Factura al Contado)`,
+            cuenta: cDest,
+            cuentaNombre: cDestName,
+            debe: collectAmount,
+            haber: 0
+          },
+          {
+            asientoId: id,
+            fecha,
+            glosa: `${glosa} (Cobro de Factura al Contado)`,
+            cuenta: '1212',
+            cuentaNombre: 'Facturas por cobrar - Emitidas',
+            debe: 0,
+            haber: collectAmount
+          }
+        );
+      }
+    }
+  } else if (tipo === 'COMPRA') {
+    // 1. Determine whether it's an Asset (Activo Fijo Tangible vs Intangible) or standard Gasto
+    const isEquipos = glosaLower.includes('equipo') || 
+                      glosaLower.includes('laptop') || 
+                      glosaLower.includes('computadora') || 
+                      glosaLower.includes('servidor') || 
+                      glosaLower.includes('maquinaria') || 
+                      glosaLower.includes('activo fijo') || 
+                      glosaLower.includes('mueble');
+
+    const isLicencias = glosaLower.includes('licencia') || 
+                        glosaLower.includes('software') || 
+                        glosaLower.includes('patente') || 
+                        glosaLower.includes('intangible') ||
+                        glosaLower.includes('cloud');
+
+    let mainAccount = '6011';
+    let mainAccountName = 'Mercaderías - Compras comerciales';
+
+    if (isEquipos) {
+      mainAccount = '3311';
+      mainAccountName = 'Equipos y Activos Fijos - Adquisición';
+    } else if (isLicencias) {
+      mainAccount = '3411';
+      mainAccountName = 'Licencias e Intangibles - Adquisición';
+    }
+
+    // 2. Exception: Recibo por Honorarios has NO IGV (100% goes to concept)
+    const isHonorarios = compLower.includes('honorarios') || glosaLower.includes('honorarios');
+    const finalMontoBase = isHonorarios ? total : montoBase;
+    const finalIgv = isHonorarios ? 0 : igv;
+
+    if (sujetoDetraccion && montoDetraccion) {
+      rawEntries = [
+        {
+          asientoId: id,
+          fecha,
+          glosa,
+          cuenta: mainAccount,
+          cuentaNombre: mainAccountName,
+          debe: finalMontoBase,
+          haber: 0
+        }
+      ];
+
+      if (finalIgv > 0) {
+        rawEntries.push({
+          asientoId: id,
+          fecha,
+          glosa,
+          cuenta: '40111',
+          cuentaNombre: 'IGV - Cuenta Propia (18%)',
+          debe: finalIgv,
+          haber: 0
+        });
+      }
+
+      rawEntries.push(
+        {
+          asientoId: id,
+          fecha,
           glosa: `${glosa} (Neto por Pagar a Proveedor)`,
           cuenta: '4212',
           cuentaNombre: 'Facturas por pagar - Emitidas',
           debe: 0,
-          haber: netTotal
+          haber: total - montoDetraccion
         },
         {
           asientoId: id,
@@ -400,66 +549,70 @@ export const generateSeatsFromTransaction = (tx: Transaction): AccountingEntry[]
           debe: 0,
           haber: montoDetraccion
         }
-      ];
+      );
     } else {
-      netTotal = total;
       // Standard local purchase
-      purchaseEntries = [
+      rawEntries = [
         {
           asientoId: id,
           fecha,
           glosa,
-          cuenta: '6011',
-          cuentaNombre: 'Mercaderías - Compras comerciales',
-          debe: montoBase,
+          cuenta: mainAccount,
+          cuentaNombre: mainAccountName,
+          debe: finalMontoBase,
           haber: 0
-        },
-        {
+        }
+      ];
+
+      if (finalIgv > 0) {
+        rawEntries.push({
           asientoId: id,
           fecha,
           glosa,
           cuenta: '40111',
           cuentaNombre: 'IGV - Cuenta Propia (18%)',
-          debe: igv,
+          debe: finalIgv,
           haber: 0
-        },
-        {
-          asientoId: id,
-          fecha,
-          glosa,
-          cuenta: '4212',
-          cuentaNombre: 'Facturas por pagar - Emitidas',
-          debe: 0,
-          haber: netTotal
-        }
-      ];
+        });
+      }
+
+      rawEntries.push({
+        asientoId: id,
+        fecha,
+        glosa,
+        cuenta: '4212',
+        cuentaNombre: 'Facturas por pagar - Emitidas',
+        debe: 0,
+        haber: total
+      });
     }
 
-    if (tx.condicionPago === 'Contado') {
-      const getAccountName = (cta: string) => PCGE_MYPE.find(a => a.cta === cta)?.desc || 'Caja/Banco';
-      const cashAccount = tx.cuentaOrigen && tx.cuentaOrigen.startsWith('10') ? tx.cuentaOrigen : '1041';
-      purchaseEntries.push(
+    // If COMPRA is "al contado", register the immediate payment (pago)
+    if (condicionOperacion === 'Contado' || estadoPago === 'Pagado' || tx.formaPago) {
+      const cOrig = cuentaOrigen || '101';
+      const cOrigName = PCGE_MYPE.find(a => a.cta === cOrig)?.desc || 'Caja - Efectivo';
+      const payAmount = (sujetoDetraccion && montoDetraccion) ? (total - montoDetraccion) : total;
+      rawEntries.push(
         {
           asientoId: id,
           fecha,
-          glosa: `${glosa} (Pago inmediato de compra al contado)`,
+          glosa: `${glosa} (Pago de Factura al Contado)`,
           cuenta: '4212',
           cuentaNombre: 'Facturas por pagar - Emitidas',
-          debe: netTotal,
+          debe: payAmount,
           haber: 0
         },
         {
           asientoId: id,
           fecha,
-          glosa: `${glosa} (Pago inmediato de compra al contado)`,
-          cuenta: cashAccount,
-          cuentaNombre: getAccountName(cashAccount),
+          glosa: `${glosa} (Pago de Factura al Contado)`,
+          cuenta: cOrig,
+          cuentaNombre: cOrigName,
           debe: 0,
-          haber: netTotal
+          haber: payAmount
         }
       );
     }
-    rawEntries = purchaseEntries;
   } else if (tipo === 'PLANILLA') {
     // Basic remuneration sits in montoBase. No IGV. Total is Basic salary + 9% Essalud.
     const essalud = Number((montoBase * 0.09).toFixed(2));
